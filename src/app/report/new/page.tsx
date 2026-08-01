@@ -1,10 +1,31 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  Calendar,
+  Check,
+  ChevronDown,
+  CircleEllipsis,
+  Film,
+  MapPin,
+  MessageCircleWarning,
+  Send,
+  ShieldAlert,
+  UploadCloud,
+  Wallet,
+  X,
+} from 'lucide-react';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'video/mp4'];
+
+const CATEGORIES = [
+  { value: 'harassment', label: 'Harassment', icon: MessageCircleWarning },
+  { value: 'assault', label: 'Assault', icon: ShieldAlert },
+  { value: 'theft', label: 'Theft', icon: Wallet },
+  { value: 'other', label: 'Other', icon: CircleEllipsis },
+];
 
 export default function NewReportPage() {
   const router = useRouter();
@@ -18,14 +39,32 @@ export default function NewReportPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const [categoryOpen, setCategoryOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const timestampRef = useRef<HTMLInputElement>(null);
+  const categoryRef = useRef<HTMLDivElement>(null);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (categoryRef.current && !categoryRef.current.contains(e.target as Node)) {
+        setCategoryOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: value,
     }));
+  };
+
+  const selectCategory = (value: string) => {
+    setFormData(prev => ({ ...prev, category: value }));
+    setCategoryOpen(false);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -111,6 +150,8 @@ export default function NewReportPage() {
     }
   };
 
+  const selectedCategory = CATEGORIES.find(c => c.value === formData.category);
+
   return (
     <div className="w-full min-h-[calc(100vh-80px)] bg-[#FAFAFA] py-6 px-6">
       <div className="max-w-7xl mx-auto">
@@ -143,23 +184,50 @@ export default function NewReportPage() {
           <div className="flex-1 p-8 overflow-y-auto">
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Category */}
-              <div>
+              <div ref={categoryRef} className="relative">
                 <label className="block text-pink-700 text-lg font-semibold mb-2">
                   Category*
                 </label>
-                <select
-                  name="category"
-                  value={formData.category}
-                  onChange={handleChange}
-                  className="w-full px-5 py-2 bg-white rounded-[10px] border border-neutral-500 text-neutral-500 text-sm font-medium focus:outline-none focus:border-pink-700"
-                  required
+                <button
+                  type="button"
+                  onClick={() => setCategoryOpen(prev => !prev)}
+                  className={`w-full px-4 py-2.5 bg-white rounded-xl border text-sm font-medium flex items-center justify-between gap-2 transition-all ${
+                    categoryOpen
+                      ? 'border-pink-700 ring-2 ring-pink-700/20'
+                      : 'border-neutral-300 hover:border-pink-400'
+                  }`}
                 >
-                  <option value="">Select incident category</option>
-                  <option value="harassment">Harassment</option>
-                  <option value="assault">Assault</option>
-                  <option value="theft">Theft</option>
-                  <option value="other">Other</option>
-                </select>
+                  <span className={`flex items-center gap-2 ${selectedCategory ? 'text-black' : 'text-neutral-500'}`}>
+                    {selectedCategory && <selectedCategory.icon className="w-4 h-4 text-pink-700" />}
+                    {selectedCategory ? selectedCategory.label : 'Select incident category'}
+                  </span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-neutral-500 transition-transform duration-200 ${categoryOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+
+                {categoryOpen && (
+                  <div className="absolute z-10 mt-2 w-full bg-white rounded-xl border border-neutral-200 shadow-lg shadow-pink-700/10 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                    {CATEGORIES.map((cat) => {
+                      const Icon = cat.icon;
+                      const isSelected = formData.category === cat.value;
+                      return (
+                        <button
+                          key={cat.value}
+                          type="button"
+                          onClick={() => selectCategory(cat.value)}
+                          className={`w-full px-4 py-2.5 flex items-center gap-2 text-sm font-medium text-left transition-colors ${
+                            isSelected ? 'bg-pink-700/10 text-pink-700' : 'text-neutral-700 hover:bg-neutral-50'
+                          }`}
+                        >
+                          <Icon className="w-4 h-4 shrink-0" />
+                          <span className="flex-1">{cat.label}</span>
+                          {isSelected && <Check className="w-4 h-4 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 {errors.category && (
                   <p className="mt-1 text-xs text-red-600">{errors.category}</p>
                 )}
@@ -170,7 +238,7 @@ export default function NewReportPage() {
                 <label className="block text-pink-700 text-lg font-semibold mb-2">
                   Location*
                 </label>
-                <div className="w-full px-5 py-2 bg-pink-700/10 rounded-[10px] border border-zinc-100 flex items-center gap-2">
+                <div className="w-full px-4 py-2.5 bg-pink-700/5 rounded-xl border border-transparent focus-within:border-pink-700 focus-within:ring-2 focus-within:ring-pink-700/20 flex items-center gap-2 transition-all">
                   <input
                     type="text"
                     name="location"
@@ -180,9 +248,7 @@ export default function NewReportPage() {
                     className="w-full bg-transparent text-black text-sm font-medium placeholder:text-neutral-500 focus:outline-none"
                     required
                   />
-                  <svg className="w-5 h-5 text-black shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
+                  <MapPin className="w-4 h-4 text-pink-700 shrink-0" />
                 </div>
                 {errors.location && (
                   <p className="mt-1 text-xs text-red-600">{errors.location}</p>
@@ -194,15 +260,20 @@ export default function NewReportPage() {
                 <label className="block text-pink-700 text-lg font-semibold mb-2">
                   Timestamp*
                 </label>
-                <div className="w-full px-5 py-2 bg-pink-700/10 rounded-[10px] border border-zinc-100 flex items-center gap-2">
+                <div
+                  onClick={() => timestampRef.current?.showPicker?.()}
+                  className="relative w-full px-4 py-2.5 bg-pink-700/5 rounded-xl border border-transparent focus-within:border-pink-700 focus-within:ring-2 focus-within:ring-pink-700/20 flex items-center gap-2 cursor-pointer transition-all"
+                >
                   <input
+                    ref={timestampRef}
                     type="datetime-local"
                     name="timestamp"
                     value={formData.timestamp}
                     onChange={handleChange}
-                    className="w-full bg-transparent text-black text-sm font-medium focus:outline-none"
+                    className="w-full bg-transparent text-black text-sm font-medium focus:outline-none cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                     required
                   />
+                  <Calendar className="w-4 h-4 text-pink-700 shrink-0 pointer-events-none" />
                 </div>
                 {errors.timestamp && (
                   <p className="mt-1 text-xs text-red-600">{errors.timestamp}</p>
@@ -219,7 +290,7 @@ export default function NewReportPage() {
                   value={formData.description}
                   onChange={handleChange}
                   placeholder="Tell us brief details of what happened"
-                  className="w-full h-24 px-5 py-3 bg-white rounded-[10px] border border-neutral-500 text-neutral-500 text-sm font-medium placeholder:text-neutral-500 focus:outline-none focus:border-pink-700 resize-none"
+                  className="w-full h-24 px-4 py-3 bg-white rounded-xl border border-neutral-300 text-black text-sm font-medium placeholder:text-neutral-500 focus:outline-none focus:border-pink-700 focus:ring-2 focus:ring-pink-700/20 resize-none transition-all"
                 />
               </div>
 
@@ -238,7 +309,9 @@ export default function NewReportPage() {
                 />
                 <div
                   onClick={() => !evidence && fileInputRef.current?.click()}
-                  className={`relative w-full h-44 px-5 py-6 bg-white rounded-[10px] border border-neutral-500 flex flex-col items-center justify-center gap-3 transition-colors ${evidence ? '' : 'cursor-pointer hover:border-pink-700'}`}
+                  className={`relative w-full h-44 px-5 py-6 bg-white rounded-xl border border-dashed flex flex-col items-center justify-center gap-3 transition-all ${
+                    evidence ? 'border-pink-700 bg-pink-700/5' : 'border-neutral-300 cursor-pointer hover:border-pink-700 hover:bg-pink-700/5'
+                  }`}
                 >
                   {evidence && (
                     <button
@@ -251,27 +324,27 @@ export default function NewReportPage() {
                       aria-label="Remove uploaded file"
                       className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-neutral-200 text-neutral-600 hover:bg-red-100 hover:text-red-600 transition-colors"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
+                      <X className="w-4 h-4" />
                     </button>
                   )}
-                  <svg className="w-11 h-11 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
+                  {evidence ? (
+                    <Film className="w-10 h-10 text-pink-700" />
+                  ) : (
+                    <UploadCloud className="w-10 h-10 text-neutral-400" />
+                  )}
                   <div className="text-center">
                     {evidence ? (
                       <p className="text-neutral-700 text-sm font-medium">{evidence.name}</p>
                     ) : (
                       <>
                         <p className="text-neutral-500 text-sm font-medium">Upload Photo / Video</p>
-                        <p className="text-neutral-500 text-sm font-medium">Drag & drop or browse (PNG, JPG, MP4)</p>
+                        <p className="text-neutral-400 text-xs">Drag & drop or browse (PNG, JPG, MP4)</p>
                       </>
                     )}
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-neutral-500 font-normal">
-                  Max 5MB.<br/>EXIF location/metadata is automatically stripped
+                  Max 5MB. EXIF location/metadata is automatically stripped.
                 </p>
                 {errors.evidence && (
                   <p className="mt-1 text-xs text-red-600">{errors.evidence}</p>
@@ -286,9 +359,16 @@ export default function NewReportPage() {
                 <button
                   type="submit"
                   disabled={status === 'submitting'}
-                  className="w-36 h-9 bg-pink-700 rounded-[10px] text-white text-base font-semibold hover:bg-pink-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-40 h-10 bg-pink-700 rounded-xl text-white text-base font-semibold hover:bg-pink-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {status === 'submitting' ? 'SUBMITTING...' : 'SUBMIT'}
+                  {status === 'submitting' ? (
+                    'SUBMITTING...'
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      SUBMIT
+                    </>
+                  )}
                 </button>
               </div>
             </form>

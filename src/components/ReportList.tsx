@@ -1,6 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import {
+  Calendar,
+  CircleEllipsis,
+  FileText,
+  Loader2,
+  MapPin,
+  MessageCircleWarning,
+  ShieldAlert,
+  Trash2,
+  Wallet,
+} from 'lucide-react';
 
 export interface IncidentItem {
   id: string;
@@ -23,6 +34,13 @@ const CATEGORY_STYLES: Record<string, string> = {
   assault: 'bg-red-100 text-red-700',
   theft: 'bg-yellow-100 text-yellow-700',
   other: 'bg-neutral-200 text-neutral-700',
+};
+
+const CATEGORY_ICONS: Record<string, typeof MessageCircleWarning> = {
+  harassment: MessageCircleWarning,
+  assault: ShieldAlert,
+  theft: Wallet,
+  other: CircleEllipsis,
 };
 
 function formatTimestamp(value: string) {
@@ -76,12 +94,12 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
 
   if (items.length === 0) {
     return (
-      <div className="w-full bg-white rounded-[20px] border border-pink-700/20 p-12 flex flex-col items-center gap-3 text-center">
-        <svg className="w-12 h-12 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
+      <div className="w-full bg-white rounded-2xl border border-dashed border-pink-700/30 p-12 flex flex-col items-center gap-3 text-center">
+        <div className="w-16 h-16 rounded-full bg-pink-700/10 flex items-center justify-center">
+          <FileText className="w-8 h-8 text-pink-700/60" />
+        </div>
         <p className="text-neutral-700 text-sm font-semibold">No reports yet</p>
-        <p className="text-neutral-500 text-sm">Be the first to report an incident and help keep the community safe.</p>
+        <p className="text-neutral-500 text-sm max-w-xs">Be the first to report an incident and help keep the community safe.</p>
       </div>
     );
   }
@@ -90,24 +108,30 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
     <div className="space-y-4">
       {items.map((incident) => {
         const isOwner = Boolean(myReports[incident.id]);
+        const CategoryIcon = CATEGORY_ICONS[incident.category] ?? CATEGORY_ICONS.other;
         return (
           <div
             key={incident.id}
-            className="w-full bg-white rounded-2xl border border-zinc-100 shadow-sm p-5"
+            className="w-full bg-white rounded-2xl border border-zinc-100 shadow-sm p-5 hover:shadow-md transition-shadow"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-2">
                   <span
-                    className={`px-3 py-1 rounded-full text-xs font-semibold ${CATEGORY_STYLES[incident.category] ?? CATEGORY_STYLES.other}`}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${CATEGORY_STYLES[incident.category] ?? CATEGORY_STYLES.other}`}
                   >
+                    <CategoryIcon className="w-3.5 h-3.5" />
                     {CATEGORY_LABELS[incident.category] ?? incident.category}
                   </span>
-                  <span className="text-neutral-500 text-xs font-medium">
+                  <span className="text-neutral-500 text-xs font-medium flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5" />
                     {formatTimestamp(incident.timestamp)}
                   </span>
                 </div>
-                <p className="text-black text-sm font-semibold mb-1">{incident.location}</p>
+                <p className="text-black text-sm font-semibold mb-1 flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 text-pink-700 shrink-0" />
+                  {incident.location}
+                </p>
                 {incident.description && (
                   <p className="text-neutral-600 text-sm">{incident.description}</p>
                 )}
@@ -118,8 +142,9 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
                     href={incident.evidenceUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-pink-700 text-xs font-semibold hover:underline"
+                    className="text-pink-700 text-xs font-semibold hover:underline flex items-center gap-1"
                   >
+                    <FileText className="w-3.5 h-3.5" />
                     View evidence
                   </a>
                 )}
@@ -128,8 +153,13 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
                     type="button"
                     onClick={() => handleDelete(incident.id)}
                     disabled={deletingId === incident.id}
-                    className="text-red-600 text-xs font-semibold hover:underline disabled:opacity-50"
+                    className="text-red-600 text-xs font-semibold hover:underline disabled:opacity-50 flex items-center gap-1"
                   >
+                    {deletingId === incident.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3.5 h-3.5" />
+                    )}
                     {deletingId === incident.id ? 'Deleting...' : 'Delete'}
                   </button>
                 )}

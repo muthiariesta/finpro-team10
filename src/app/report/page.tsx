@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Plus } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import ReportList from '@/components/ReportList';
 
@@ -29,9 +30,10 @@ export default async function ReportListPage() {
           <h1 className="text-pink-700 text-2xl font-semibold">Incident Reports</h1>
           <Link
             href="/report/new"
-            className="px-5 py-2 bg-pink-700 rounded-[10px] text-white text-sm font-semibold hover:bg-pink-800 transition-colors"
+            className="px-5 py-2 bg-pink-700 rounded-xl text-white text-sm font-semibold hover:bg-pink-800 transition-colors flex items-center gap-1.5"
           >
-            + Add Report
+            <Plus className="w-4 h-4" />
+            Add Report
           </Link>
         </div>
 
