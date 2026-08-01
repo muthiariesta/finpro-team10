@@ -19,5 +19,6 @@ model Incident {
   timestamp   DateTime
   description String?
   evidenceUrl String?
+  ownerToken  String
   createdAt   DateTime @default(now())
 }

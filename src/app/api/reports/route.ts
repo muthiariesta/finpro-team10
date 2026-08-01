@@ -15,12 +15,17 @@ export async function POST(request: Request) {
   const timestamp = formData.get('timestamp');
   const description = formData.get('description');
   const evidence = formData.get('evidence');
+  const ownerToken = formData.get('ownerToken');
 
   if (!category || !location || !timestamp) {
     return NextResponse.json(
       { error: 'category, location, and timestamp are required' },
       { status: 400 }
     );
+  }
+
+  if (!ownerToken || typeof ownerToken !== 'string') {
+    return NextResponse.json({ error: 'ownerToken is required' }, { status: 400 });
   }
 
   const parsedTimestamp = new Date(timestamp as string);
@@ -56,6 +61,7 @@ export async function POST(request: Request) {
       timestamp: parsedTimestamp,
       description: (description as string) || null,
       evidenceUrl,
+      ownerToken,
     },
   });
 
