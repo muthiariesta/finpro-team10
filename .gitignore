@@ -42,6 +42,11 @@ next-env.d.ts
 
 /src/generated/prisma
 
-# uploaded evidence files
+# uploaded evidence files (legacy local storage, no longer used)
 /public/uploads
+/dev.db
 /prisma/dev.db
+
+# vercel
+.vercel
+.env*

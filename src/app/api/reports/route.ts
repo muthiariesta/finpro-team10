@@ -1,6 +1,4 @@
-import { randomUUID } from 'crypto';
-import { mkdir, writeFile } from 'fs/promises';
-import path from 'path';
+import { put } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
@@ -43,15 +41,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'evidence must be PNG, JPG, or MP4' }, { status: 400 });
     }
 
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-    await mkdir(uploadsDir, { recursive: true });
+    const blob = await put(`evidence/${evidence.name}`, evidence, {
+      access: 'public',
+      addRandomSuffix: true,
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
 
-    const extension = path.extname(evidence.name) || '';
-    const filename = `${randomUUID()}${extension}`;
-    const buffer = Buffer.from(await evidence.arrayBuffer());
-    await writeFile(path.join(uploadsDir, filename), buffer);
-
-    evidenceUrl = `/uploads/${filename}`;
+    evidenceUrl = blob.url;
   }
 
   const incident = await prisma.incident.create({

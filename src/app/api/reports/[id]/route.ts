@@ -1,5 +1,4 @@
-import { unlink } from 'fs/promises';
-import path from 'path';
+import { del } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
@@ -25,8 +24,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   await prisma.incident.delete({ where: { id } });
 
   if (incident.evidenceUrl) {
-    const filePath = path.join(process.cwd(), 'public', incident.evidenceUrl);
-    await unlink(filePath).catch(() => {});
+    await del(incident.evidenceUrl, { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {});
   }
 
   return NextResponse.json({ success: true });
