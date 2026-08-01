@@ -1,6 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'video/mp4'];
 
 export default function ReportPage() {
   const [formData, setFormData] = useState({
@@ -9,9 +12,11 @@ export default function ReportPage() {
     timestamp: '',
     description: '',
   });
+  const [evidence, setEvidence] = useState<File | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -19,6 +24,33 @@ export default function ReportPage() {
       ...prev,
       [name]: value,
     }));
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0] ?? null;
+    if (!selected) {
+      setEvidence(null);
+      return;
+    }
+
+    if (selected.size > MAX_FILE_SIZE) {
+      setErrors(prev => ({ ...prev, evidence: 'File must be 5MB or smaller' }));
+      setEvidence(null);
+      e.target.value = '';
+      return;
+    }
+    if (!ALLOWED_TYPES.includes(selected.type)) {
+      setErrors(prev => ({ ...prev, evidence: 'Only PNG, JPG, or MP4 files are allowed' }));
+      setEvidence(null);
+      e.target.value = '';
+      return;
+    }
+
+    setErrors(prev => {
+      const { evidence: _removed, ...rest } = prev;
+      return rest;
+    });
+    setEvidence(selected);
   };
 
   const validate = () => {
@@ -39,10 +71,16 @@ export default function ReportPage() {
     setErrorMessage('');
 
     try {
+      const payload = new FormData();
+      payload.append('category', formData.category);
+      payload.append('location', formData.location);
+      payload.append('timestamp', formData.timestamp);
+      payload.append('description', formData.description);
+      if (evidence) payload.append('evidence', evidence);
+
       const res = await fetch('/api/reports', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: payload,
       });
 
       if (!res.ok) {
@@ -52,6 +90,8 @@ export default function ReportPage() {
 
       setStatus('success');
       setFormData({ category: '', location: '', timestamp: '', description: '' });
+      setEvidence(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setErrors({});
     } catch (err) {
       setStatus('error');
@@ -119,9 +159,6 @@ export default function ReportPage() {
                   Location*
                 </label>
                 <div className="w-full px-5 py-2 bg-pink-700/10 rounded-[10px] border border-zinc-100 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-black shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
                   <input
                     type="text"
                     name="location"
@@ -131,6 +168,9 @@ export default function ReportPage() {
                     className="w-full bg-transparent text-black text-sm font-medium placeholder:text-neutral-500 focus:outline-none"
                     required
                   />
+                  <svg className="w-5 h-5 text-black shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
                 </div>
                 {errors.location && (
                   <p className="mt-1 text-xs text-red-600">{errors.location}</p>
@@ -143,9 +183,6 @@ export default function ReportPage() {
                   Timestamp*
                 </label>
                 <div className="w-full px-5 py-2 bg-pink-700/10 rounded-[10px] border border-zinc-100 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-black shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
                   <input
                     type="datetime-local"
                     name="timestamp"
@@ -179,18 +216,54 @@ export default function ReportPage() {
                 <label className="block text-pink-700 text-lg font-semibold mb-2">
                   Upload Evidence
                 </label>
-                <div className="w-full h-44 px-5 py-6 bg-white rounded-[10px] border border-neutral-500 flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-pink-700 transition-colors">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  name="evidence"
+                  accept="image/png,image/jpeg,video/mp4"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                <div
+                  onClick={() => !evidence && fileInputRef.current?.click()}
+                  className={`relative w-full h-44 px-5 py-6 bg-white rounded-[10px] border border-neutral-500 flex flex-col items-center justify-center gap-3 transition-colors ${evidence ? '' : 'cursor-pointer hover:border-pink-700'}`}
+                >
+                  {evidence && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEvidence(null);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      aria-label="Remove uploaded file"
+                      className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-neutral-200 text-neutral-600 hover:bg-red-100 hover:text-red-600 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
                   <svg className="w-11 h-11 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                   <div className="text-center">
-                    <p className="text-neutral-500 text-sm font-medium">Upload Photo / Video</p>
-                    <p className="text-neutral-500 text-sm font-medium">Drag & drop or browse (PNG, JPG, MP4)</p>
+                    {evidence ? (
+                      <p className="text-neutral-700 text-sm font-medium">{evidence.name}</p>
+                    ) : (
+                      <>
+                        <p className="text-neutral-500 text-sm font-medium">Upload Photo / Video</p>
+                        <p className="text-neutral-500 text-sm font-medium">Drag & drop or browse (PNG, JPG, MP4)</p>
+                      </>
+                    )}
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-neutral-500 font-normal">
                   Max 5MB.<br/>EXIF location/metadata is automatically stripped
                 </p>
+                {errors.evidence && (
+                  <p className="mt-1 text-xs text-red-600">{errors.evidence}</p>
+                )}
               </div>
 
               {/* Submit Button */}

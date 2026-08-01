@@ -18,5 +18,6 @@ model Incident {
   location    String
   timestamp   DateTime
   description String?
+  evidenceUrl String?
   createdAt   DateTime @default(now())
 }
