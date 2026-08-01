@@ -5,10 +5,13 @@ import { useState } from 'react';
 export default function ReportPage() {
   const [formData, setFormData] = useState({
     category: '',
-    location: 'Near Ayodya Park, Kebayoran Baru',
-    timestamp: '27/07/2026 - 21:45 WIB',
+    location: '',
+    timestamp: '',
     description: '',
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -18,9 +21,42 @@ export default function ReportPage() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const validate = () => {
+    const nextErrors: Record<string, string> = {};
+    if (!formData.category) nextErrors.category = 'Category is required';
+    if (!formData.location.trim()) nextErrors.location = 'Location is required';
+    if (!formData.timestamp) nextErrors.timestamp = 'Timestamp is required';
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form submitted:', formData);
+
+    if (!validate()) return;
+
+    setStatus('submitting');
+    setErrorMessage('');
+
+    try {
+      const res = await fetch('/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to submit report');
+      }
+
+      setStatus('success');
+      setFormData({ category: '', location: '', timestamp: '', description: '' });
+      setErrors({});
+    } catch (err) {
+      setStatus('error');
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to submit report');
+    }
   };
 
   return (
@@ -72,6 +108,9 @@ export default function ReportPage() {
                   <option value="theft">Theft</option>
                   <option value="other">Other</option>
                 </select>
+                {errors.category && (
+                  <p className="mt-1 text-xs text-red-600">{errors.category}</p>
+                )}
               </div>
 
               {/* Location */}
@@ -79,12 +118,23 @@ export default function ReportPage() {
                 <label className="block text-pink-700 text-lg font-semibold mb-2">
                   Location*
                 </label>
-                <div className="w-full px-5 py-2 bg-pink-700/10 rounded-[10px] border border-zinc-100 flex items-center justify-between cursor-pointer hover:bg-pink-700/15 transition-colors">
-                  <span className="text-black text-sm font-medium">{formData.location}</span>
-                  <svg className="w-6 h-6 text-black flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-full px-5 py-2 bg-pink-700/10 rounded-[10px] border border-zinc-100 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-black shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                   </svg>
+                  <input
+                    type="text"
+                    name="location"
+                    value={formData.location}
+                    onChange={handleChange}
+                    placeholder="e.g. Near Ayodya Park, Kebayoran Baru"
+                    className="w-full bg-transparent text-black text-sm font-medium placeholder:text-neutral-500 focus:outline-none"
+                    required
+                  />
                 </div>
+                {errors.location && (
+                  <p className="mt-1 text-xs text-red-600">{errors.location}</p>
+                )}
               </div>
 
               {/* Timestamp */}
@@ -92,12 +142,22 @@ export default function ReportPage() {
                 <label className="block text-pink-700 text-lg font-semibold mb-2">
                   Timestamp*
                 </label>
-                <div className="w-full px-5 py-2 bg-pink-700/10 rounded-[10px] border border-zinc-100 flex items-center justify-between cursor-pointer hover:bg-pink-700/15 transition-colors">
-                  <span className="text-black text-sm font-medium">{formData.timestamp}</span>
-                  <svg className="w-6 h-6 text-black flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-full px-5 py-2 bg-pink-700/10 rounded-[10px] border border-zinc-100 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-black shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                   </svg>
+                  <input
+                    type="datetime-local"
+                    name="timestamp"
+                    value={formData.timestamp}
+                    onChange={handleChange}
+                    className="w-full bg-transparent text-black text-sm font-medium focus:outline-none"
+                    required
+                  />
                 </div>
+                {errors.timestamp && (
+                  <p className="mt-1 text-xs text-red-600">{errors.timestamp}</p>
+                )}
               </div>
 
               {/* Description */}
@@ -134,12 +194,19 @@ export default function ReportPage() {
               </div>
 
               {/* Submit Button */}
-              <div className="flex justify-end pt-2">
+              <div className="flex flex-col items-end gap-2 pt-2">
+                {status === 'success' && (
+                  <p className="text-sm text-green-600 font-medium">Report submitted. Thank you.</p>
+                )}
+                {status === 'error' && (
+                  <p className="text-sm text-red-600 font-medium">{errorMessage}</p>
+                )}
                 <button
                   type="submit"
-                  className="w-36 h-9 bg-pink-700 rounded-[10px] text-white text-base font-semibold hover:bg-pink-800 transition-colors"
+                  disabled={status === 'submitting'}
+                  className="w-36 h-9 bg-pink-700 rounded-[10px] text-white text-base font-semibold hover:bg-pink-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  SUBMIT
+                  {status === 'submitting' ? 'SUBMITTING...' : 'SUBMIT'}
                 </button>
               </div>
             </form>
