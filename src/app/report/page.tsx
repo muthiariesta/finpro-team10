@@ -24,10 +24,10 @@ export default async function ReportListPage() {
   }));
 
   return (
-    <div className="w-full min-h-[calc(100vh-80px)] bg-[#FAFAFA] py-6 px-6">
+    <div className="w-full min-h-[calc(100vh-80px)] bg-[#FAFAFA] py-6 px-6 md:px-20">
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-pink-700 text-2xl font-semibold">Incident Reports</h1>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+          <h1 className="text-pink-700 text-xl md:text-2xl font-semibold">Incident Reports</h1>
           <Link
             href="/report/new"
             className="px-5 py-2 bg-pink-700 rounded-xl text-white text-sm font-semibold hover:bg-pink-800 transition-colors flex items-center gap-1.5"

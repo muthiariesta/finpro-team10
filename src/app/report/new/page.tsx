@@ -153,35 +153,35 @@ export default function NewReportPage() {
   const selectedCategory = CATEGORIES.find(c => c.value === formData.category);
 
   return (
-    <div className="w-full min-h-[calc(100vh-80px)] bg-[#FAFAFA] py-6 px-6">
+    <div className="w-full min-h-[calc(100vh-80px)] bg-[#FAFAFA] py-6 px-6 md:px-20">
       <div className="max-w-7xl mx-auto">
         {/* Main Container */}
-        <div className="w-full bg-white rounded-[20px] border border-pink-700 overflow-hidden flex h-[816px]">
+        <div className="w-full bg-white rounded-[20px] border border-pink-700 overflow-hidden flex flex-col md:flex-row md:h-[816px]">
           {/* Left Side - Illustration & Text */}
-          <div className="w-[605px] bg-pink-700/10 rounded-l-[20px] flex flex-col items-center justify-center flex-shrink-0 p-6">
+          <div className="w-full md:w-[605px] bg-pink-700/10 rounded-t-[20px] md:rounded-t-none md:rounded-l-[20px] flex flex-col items-center justify-center shrink-0 p-6 md:p-8">
             {/* Vector Illustration */}
-            <div className="mb-8">
+            <div className="mb-4 md:mb-8">
               <img
                 src="/assets/vector-report.png"
                 alt="Report Incident Illustration"
-                className="w-[400px] h-[350px] object-contain"
+                className="w-40 h-32 md:w-[400px] md:h-[350px] object-contain"
               />
             </div>
 
             {/* Text Section */}
-            <div className="text-center space-y-4">
-              <h2 className="text-pink-700 text-2xl font-semibold">Report an Incident</h2>
-              <p className="text-pink-700 text-base font-semibold leading-6">
+            <div className="text-center space-y-2 md:space-y-4">
+              <h2 className="text-pink-700 text-xl md:text-2xl font-semibold">Report an Incident</h2>
+              <p className="text-pink-700 text-sm md:text-base font-semibold leading-6">
                 Your report helps keep the community safe. All submissions are strictly anonymous.
               </p>
-              <p className="text-pink-700 text-sm font-semibold leading-5">
+              <p className="text-pink-700 text-xs md:text-sm font-semibold leading-5">
                 Your personal details and precise GPS location are hidden to protect your privacy.
               </p>
             </div>
           </div>
 
           {/* Right Side - Form */}
-          <div className="flex-1 p-8 overflow-y-auto">
+          <div className="flex-1 p-6 md:p-8 overflow-y-auto">
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Category */}
               <div ref={categoryRef} className="relative">

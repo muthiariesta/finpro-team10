@@ -112,11 +112,11 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
         return (
           <div
             key={incident.id}
-            className="w-full bg-white rounded-2xl border border-zinc-100 shadow-sm p-5 hover:shadow-md transition-shadow"
+            className="w-full bg-white rounded-2xl border border-zinc-100 shadow-sm p-4 md:p-5 hover:shadow-md transition-shadow"
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-2">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex-1 min-w-[200px]">
+                <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-2">
                   <span
                     className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${CATEGORY_STYLES[incident.category] ?? CATEGORY_STYLES.other}`}
                   >
