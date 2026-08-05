@@ -2,22 +2,65 @@
 
 import React, { useState } from 'react';
 import dynamic from 'next/dynamic';
+import { Info, Loader2, Map, TriangleAlert } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
+import {
+  fetchRouteRisk,
+  toApiDatetime,
+  toSafetyPercentage,
+  type LatLng,
+  type RouteRisk,
+} from '../lib/riskApi';
+import {
+  fetchSafePoints,
+  formatDistance,
+  sortByDistanceTo,
+  SAFE_POINT_ICONS,
+  SAFE_POINT_LABELS,
+  type SafePoint,
+} from '../lib/safePoints';
 
 // Import SafeRouteMap secara dynamic khusus untuk Client Side
 const SafeRouteMap = dynamic(() => import('../components/SafeRouteMap'), { 
   ssr: false,
   loading: () => (
     <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400 font-medium">
-      Memuat Peta...
+      Loading map...
     </div>
   )
 });
 
+/** Banyaknya titik yang dinilai di sepanjang rute. */
+const RISK_SAMPLE_COUNT = 6;
+
+/** Mengubah nama tempat menjadi koordinat lewat Nominatim. */
+async function geocode(query: string): Promise<LatLng | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`
+    );
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+    }
+  } catch (err) {
+    console.warn(`Geocoding gagal untuk "${query}":`, err);
+  }
+  return null;
+}
+
 export default function SafeRoutePage() {
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [apiRiskData, setApiRiskData] = useState<any>(null);
+  const [routeRisk, setRouteRisk] = useState<RouteRisk | null>(null);
+  const [originCoords, setOriginCoords] = useState<LatLng>([41.8781, -87.6298]);
+  const [destCoords, setDestCoords] = useState<LatLng>([41.8814, -87.7280]);
+  /** Geometri jalan sungguhan dari OSRM; kosong jika routing gagal. */
+  const [routePath, setRoutePath] = useState<LatLng[]>([]);
+  /** Pesan kegagalan pencarian rute; menggantikan seluruh kartu hasil. */
+  const [routeError, setRouteError] = useState<string | null>(null);
+  /** Safe point di sekitar rute, terurut dari yang terdekat ke tujuan. */
+  const [safePoints, setSafePoints] = useState<SafePoint[]>([]);
 
   // State untuk Rute & Geocoding
   const [routeInfo, setRouteInfo] = useState<{
@@ -27,91 +70,101 @@ export default function SafeRoutePage() {
   } | null>(null);
 
   // State Input Form
-  const [originText, setOriginText] = useState('Current Location');
+  const [originText, setOriginText] = useState('The Loop, Chicago');
   const [destinationText, setDestinationText] = useState('West Garfield Park, Chicago');
   const [departureTime, setDepartureTime] = useState('21:30');
 
-  // Helper untuk hitung % keamanan dari risk_score (0-100)
-  const getSafetyPercentage = (score?: number) => {
-    if (score === undefined || score === null) return 96; 
-    const safety = 100 - score;
-    return Math.max(0, Math.min(100, Math.round(safety)));
-  };
-
-  // Fungsi Fetch ke Nominatim, OSRM, & FastAPI ML
+  // Fungsi Fetch ke Nominatim, OSRM, & RiskScore API
   const handleFindRoutes = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setRouteInfo(null);
+    setRoutePath([]);
+    setRouteRisk(null);
+    setRouteError(null);
+    setSafePoints([]);
 
-    // Default fallback (Chicago Loop) jika geocoding tidak terdeteksi
-    let lat = 41.8781; 
-    let lon = -87.6298;
+    // 1. Ubah kedua input menjadi koordinat. Berurutan, bukan paralel:
+    //    Nominatim membatasi 1 permintaan per detik.
+    const origin = await geocode(originText);
+    const dest = await geocode(destinationText);
 
-    try {
-      // 1. Ambil koordinat otomatis dari teks tujuan yang diketik user
-      const geoRes = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(destinationText)}`
-      );
-      const geoData = await geoRes.json();
-
-      if (geoData && geoData.length > 0) {
-        lat = parseFloat(geoData[0].lat);
-        lon = parseFloat(geoData[0].lon);
-        console.log(`📍 Koordinat terdeteksi untuk "${destinationText}":`, lat, lon);
-      }
-
-      // 2. Fetch OSRM Routing untuk estimasi jarak, durasi, dan nama jalan
-      try {
-        const osrmRes = await fetch(
-          `https://router.project-osrm.org/route/v1/driving/-87.6298,41.8781;${lon},${lat}?overview=false`
-        );
-        const osrmData = await osrmRes.json();
-
-        if (osrmData.routes && osrmData.routes.length > 0) {
-          const route = osrmData.routes[0];
-          const duration = Math.round(route.duration / 60);
-          const distance = (route.distance / 1000).toFixed(1);
-          const roadName = route.legs[0]?.summary || `Route to ${destinationText.split(',')[0]}`;
-
-          setRouteInfo({
-            viaRoad: `Via ${roadName}`,
-            durationMin: duration,
-            distanceKm: `${distance} km`,
-          });
-        }
-      } catch (osrmErr) {
-        console.warn("OSRM routing warning, using fallback string:", osrmErr);
-      }
-
-      // 3. Kirim lat & lon aktual ke backend ML FastAPI
-      const currentISO = new Date().toISOString().split('.')[0];
-      const response = await fetch(
-        `http://localhost:8000/risk-score?lat=${lat}&lon=${lon}&datetime=${encodeURIComponent(currentISO)}`,
-        {
-          method: 'GET',
-          headers: { 'Accept': 'application/json' },
-        }
-      );
-
-      if (!response.ok) throw new Error('Gagal terhubung ke API Risk Score');
-
-      const data = await response.json();
-      console.log('Response dari FastAPI ML:', data);
-
-      setApiRiskData(data);
+    if (!origin || !dest) {
+      const failed = !origin ? originText : destinationText;
+      setRouteError(`We could not find "${failed}". Try being more specific, for example include the city name.`);
       setHasSearched(true);
-    } catch (error) {
-      console.error('Error fetching risk score, menggunakan fallback:', error);
-      setHasSearched(true); 
-    } finally {
       setIsLoading(false);
+      return;
     }
+
+    setOriginCoords(origin);
+    setDestCoords(dest);
+
+    // 2. Fetch OSRM Routing. overview=full + geometries=geojson memberi
+    //    geometri jalan sungguhan, bukan sekadar jarak & durasi.
+    let path: LatLng[] = [];
+    try {
+      const osrmRes = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/` +
+          `${origin[1]},${origin[0]};${dest[1]},${dest[0]}` +
+          `?overview=full&geometries=geojson`
+      );
+      const osrmData = await osrmRes.json();
+
+      if (osrmData.routes && osrmData.routes.length > 0) {
+        const route = osrmData.routes[0];
+        setRouteInfo({
+          viaRoad: `Via ${route.legs[0]?.summary || destinationText.split(',')[0]}`,
+          durationMin: Math.round(route.duration / 60),
+          distanceKm: `${(route.distance / 1000).toFixed(1)} km`,
+        });
+
+        // GeoJSON memakai urutan [lon, lat]; Leaflet memakai [lat, lon].
+        path = (route.geometry?.coordinates ?? []).map(
+          ([lng, lt]: [number, number]) => [lt, lng] as LatLng
+        );
+        setRoutePath(path);
+      }
+    } catch (osrmErr) {
+      console.warn('OSRM routing gagal:', osrmErr);
+    }
+
+    // Tanpa rute, JANGAN mengarang garis lurus lalu menilainya. Dulu hal itu
+    // membuat perjalanan di Jakarta memperoleh skor milik titik asal di
+    // Chicago - persis rasa aman palsu yang harus dihindari produk ini.
+    if (path.length === 0) {
+      setRouteError(
+        'No road route was found between these two locations. ' +
+          'Make sure the start and destination are in the same region.'
+      );
+      setHasSearched(true);
+      setIsLoading(false);
+      return;
+    }
+
+    // 3. Nilai risiko di beberapa titik sepanjang rute, memakai jam
+    //    keberangkatan pilihan user - risiko berubah menurut waktu (PRD FR#6).
+    const risk = await fetchRouteRisk(
+      path,
+      toApiDatetime(departureTime),
+      RISK_SAMPLE_COUNT
+    );
+    setRouteRisk(risk);
+
+    // 4. Safe point di sekitar rute. Dijalankan terakhir dan tidak pernah
+    //    menggagalkan pencarian: sumbernya OpenStreetMap, bukan model Risk
+    //    Score, sehingga tetap ada isinya di wilayah tanpa data risiko.
+    const points = await fetchSafePoints(path);
+    setSafePoints(sortByDistanceTo(points, dest));
+
+    setHasSearched(true);
+    setIsLoading(false);
   };
 
   return (
     <div className="min-h-screen bg-white font-sans flex flex-col overflow-x-hidden">
       
-      {/* 🔴 FIXED NAVBAR ATAS */}
+      {/* FIXED NAVBAR ATAS */}
       <header className="fixed top-0 left-0 right-0 h-[72px] z-50 bg-white border-b border-gray-200">
         <Navbar />
       </header>
@@ -214,20 +267,37 @@ export default function SafeRoutePage() {
             >
               {isLoading ? (
                 <>
-                  <span className="animate-spin">⏳</span> ANALYZING RISK...
+                  <Loader2 className="w-4 h-4 animate-spin" /> ASSESSING ROUTE RISK...
                 </>
               ) : (
                 'FIND ROUTES'
               )}
             </button>
 
+            {/* Pencarian pertama menunggu server penilaian bangun dari idle.
+                Tanpa keterangan ini, jeda panjang terasa seperti aplikasi hang. */}
+            {isLoading && (
+              <p className="text-[11px] text-gray-500 text-center -mt-2 mb-4 leading-snug">
+                The first search may take up to a minute while the assessment
+                service wakes up. Later searches are much faster.
+              </p>
+            )}
+
+            {/* KEGAGALAN PENCARIAN RUTE */}
+            {hasSearched && routeError && (
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 animate-fadeIn">
+                <h4 className="text-sm font-bold text-rose-900 mb-1">Route not found</h4>
+                <p className="text-[11px] text-rose-800 leading-snug">{routeError}</p>
+              </div>
+            )}
+
             {/* HASIL RUTE DARI API */}
-            {hasSearched && (
+            {hasSearched && !routeError && (
               <div className="flex flex-col gap-3.5 animate-fadeIn">
                 
                 {/* A. TIME RISK WARNING CARD */}
                 <div className="bg-[#FFF4D3] border border-[#F5E0A3] rounded-xl p-3.5 flex gap-2.5 items-start">
-                  <span className="text-sm font-extrabold text-black mt-0.5">⚠️</span>
+                  <TriangleAlert className="w-4 h-4 text-black mt-0.5 shrink-0" />
                   <div>
                     <h4 className="text-xs font-black tracking-wide text-black uppercase mb-1">
                       TIME RISK WARNING
@@ -238,11 +308,58 @@ export default function SafeRoutePage() {
                   </div>
                 </div>
 
-                {/* B. ROUTE CARD (DINAMIS & BEBAS ERROR) */}
+                {/* B. ROUTE CARD */}
                 {(() => {
-                  const riskScore = apiRiskData?.risk_score ?? 0;
-                  const level = apiRiskData?.level || 'Low';
-                  const safetyPercentage = getSafetyPercentage(riskScore);
+                  const displayRoad =
+                    routeInfo?.viaRoad || `Via Main Route to ${destinationText.split(',')[0]}`;
+                  const displayTimeDist = routeInfo
+                    ? `${routeInfo.durationMin} min (${routeInfo.distanceKm})`
+                    : 'Route estimate unavailable';
+
+                  const overall = routeRisk?.overall;
+
+                  // Tanpa data keamanan, rute TIDAK BOLEH tampil hijau/aman.
+                  // Netral (abu-abu) + ajakan berhati-hati. Lihat PRD AC#1 Edge Case.
+                  if (!overall || overall.status !== 'ok') {
+                    const isError = overall?.status === 'error';
+
+                    return (
+                      <div className="bg-gray-50 border border-gray-300 rounded-xl p-4 shadow-sm">
+                        <div className="flex items-center justify-between mb-1">
+                          <h4 className="text-sm font-bold text-gray-900">Route Available</h4>
+                          <span className="text-[10px] bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full font-extrabold uppercase">
+                            Not Scored
+                          </span>
+                        </div>
+
+                        <div className="border-b border-black/10 pb-1 mb-2">
+                          <p className="text-sm font-extrabold text-black truncate">{displayRoad}</p>
+                        </div>
+
+                        <p className="text-sm font-black text-black mb-2">{displayTimeDist}</p>
+
+                        <div className="bg-white border border-gray-200 rounded-lg p-2.5 mb-3">
+                          <p className="text-[11px] font-bold text-gray-800 mb-0.5">
+                            Safety data not available
+                          </p>
+                          <p className="text-[11px] text-gray-600 leading-snug">
+                            {isError
+                              ? `${overall.message} The route is still shown, but its risk level could not be assessed.`
+                              : `None of the ${routeRisk?.total ?? 0} points checked along this route are covered by risk assessment data. Please stay alert.`}
+                          </p>
+                        </div>
+
+                        <button className="w-full bg-gray-700 hover:bg-gray-800 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer">
+                          START NAVIGATION
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  const { score, level, approximate } = overall;
+                  const safetyPercentage = toSafetyPercentage(score);
+                  const { covered = 0, total = 0 } = routeRisk ?? {};
+                  const partialCoverage = covered < total;
 
                   let cardBg = 'bg-[#E2F7E9] border-[#C3E8CE]';
                   let badgeColor = 'text-[#15803D]';
@@ -254,22 +371,17 @@ export default function SafeRoutePage() {
                   if (level === 'Medium') {
                     cardBg = 'bg-amber-50/80 border-amber-200';
                     badgeColor = 'text-amber-800';
-                    badgeText = `Moderate Risk (${Math.round(riskScore)}%)`;
+                    badgeText = `Moderate Risk (${Math.round(score)}%)`;
                     titleText = 'Moderate Route';
                     btnBg = 'bg-amber-600 hover:bg-amber-700';
                   } else if (level === 'High' || level === 'Very High') {
                     cardBg = 'bg-rose-50 border-rose-200';
                     badgeColor = 'text-rose-800';
-                    badgeText = `High Risk (${Math.round(riskScore)}%)`;
+                    badgeText = `High Risk (${Math.round(score)}%)`;
                     titleText = 'Safest Available Route';
                     showCaution = true;
                     btnBg = 'bg-rose-600 hover:bg-rose-700';
                   }
-
-                  const displayRoad = routeInfo?.viaRoad || `Via Main Route to ${destinationText.split(',')[0]}`;
-                  const displayTimeDist = routeInfo 
-                    ? `${routeInfo.durationMin} min (${routeInfo.distanceKm})` 
-                    : '10 min (2.2 km)';
 
                   return (
                     <div className={`${cardBg} border rounded-xl p-4 flex flex-col justify-between transition-colors shadow-sm`}>
@@ -280,7 +392,7 @@ export default function SafeRoutePage() {
                           </h4>
                           {showCaution && (
                             <span className="text-[10px] bg-rose-200 text-rose-900 px-2 py-0.5 rounded-full font-extrabold uppercase">
-                              ⚠️ {level} Risk
+                              <TriangleAlert className="w-3 h-3 inline mr-0.5" />{level} Risk
                             </span>
                           )}
                         </div>
@@ -300,8 +412,18 @@ export default function SafeRoutePage() {
                           </span>
                         </p>
 
-                        <p className="text-[11px] text-gray-600 font-medium mb-3">
-                          Risk Assessment: <strong className="capitalize">{level}</strong> • Well-lit main route
+                        <p className="text-[11px] text-gray-600 font-medium mb-1">
+                          Risk Assessment: <strong className="capitalize">{level}</strong>
+                          {approximate && ' • based on nearest area'} • at {departureTime}
+                        </p>
+
+                        {/* Penilaian mengikuti segmen paling berisiko, jadi
+                            dasarnya perlu terlihat oleh pengguna. */}
+                        <p className="text-[10px] text-gray-500 mb-3">
+                          Based on the riskiest segment among {covered} scored
+                          point{covered === 1 ? '' : 's'}
+                          {total > 0 && ` (of ${total} checked)`}
+                          {partialCoverage && ' • part of the route has no data'}
                         </p>
                       </div>
 
@@ -311,6 +433,60 @@ export default function SafeRoutePage() {
                     </div>
                   );
                 })()}
+
+                {/* B2. SAFE POINT DI SEKITAR RUTE
+                    Sumbernya OpenStreetMap, bukan model Risk Score, jadi
+                    tetap terisi di wilayah yang belum punya data risiko. */}
+                <div className="bg-white border border-gray-300 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-bold text-gray-900">
+                      Nearest Safe Points
+                    </h4>
+                    {safePoints.length > 0 && (
+                      <span className="text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full font-bold">
+                        {safePoints.length} found
+                      </span>
+                    )}
+                  </div>
+
+                  {safePoints.length === 0 ? (
+                    <p className="text-[11px] text-gray-500 leading-snug">
+                      No safe points were detected along this route.
+                    </p>
+                  ) : (
+                    <>
+                      <ul className="flex flex-col gap-1.5">
+                        {safePoints.slice(0, 4).map((point) => {
+                          const PointIcon = SAFE_POINT_ICONS[point.type];
+                          return (
+                          <li key={point.id} className="flex items-start gap-2">
+                            <PointIcon className="w-4 h-4 text-gray-700 mt-0.5 shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[12px] font-semibold text-gray-900 truncate">
+                                {point.name}
+                              </p>
+                              <p className="text-[10px] text-gray-500">
+                                {SAFE_POINT_LABELS[point.type]}
+                                {point.distanceM !== undefined &&
+                                  ` • ${formatDistance(point.distanceM)} from destination`}
+                              </p>
+                            </div>
+                            {point.open24h && (
+                              <span className="text-[9px] bg-green-100 text-green-800 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">
+                                24H
+                              </span>
+                            )}
+                          </li>
+                          );
+                        })}
+                      </ul>
+                      <p className="text-[10px] text-gray-400 mt-2">
+                        Source: OpenStreetMap. Opening hours come from community
+                        data and may not always be up to date.
+                      </p>
+                    </>
+                  )}
+                </div>
 
                 {/* C. FASTEST ROUTE CARD */}
                 <div className="bg-[#FDE8F3] border border-[#F9CBE2] rounded-xl p-4 flex flex-col justify-between">
@@ -324,10 +500,10 @@ export default function SafeRoutePage() {
                       </p>
                     </div>
                     <p className="text-sm font-black text-black mb-1">
-                      {routeInfo ? `${Math.max(1, routeInfo.durationMin - 4)} min` : '6 min'} <span className="font-normal">|</span> <span className="text-[#9D174D]">Moderate Risk (72%)</span>
+                      {routeInfo ? `${Math.max(1, routeInfo.durationMin - 4)} min` : '6 min'} <span className="font-normal">|</span> <span className="text-[#9D174D]">Not assessed</span>
                     </p>
                     <p className="text-[11px] text-gray-600 font-medium mb-3">
-                      Shorter route with narrow &amp; quieter roads • Passes 1 dimly lit ...
+                      Shorter route through narrower &amp; quieter streets. Its risk level has not been assessed.
                     </p>
                   </div>
                   <button className="w-full bg-[#D91176] hover:bg-[#b80d63] text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer">
@@ -337,8 +513,10 @@ export default function SafeRoutePage() {
 
                 {/* D. DISCLAIMER DATASET */}
                 <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-xl text-[10px] text-gray-500 leading-relaxed">
-                  <p className="font-bold text-gray-700 mb-0.5">📌 Catatan Model Risk Assessment:</p>
-                  {apiRiskData?.disclaimer || "Estimasi berbasis pola kejahatan historis (dataset Chicago Open Data) sebagai bentuk simulasi Proof of Concept."}
+                  <p className="font-bold text-gray-700 mb-0.5 flex items-center gap-1"><Info className="w-3 h-3" /> Risk assessment model note:</p>
+                  {routeRisk && routeRisk.overall.status !== 'error'
+                    ? routeRisk.overall.disclaimer
+                    : 'Estimates are based on historical crime patterns (Chicago Open Data) as a proof-of-concept simulation.'}
                 </div>
 
               </div>
@@ -349,8 +527,8 @@ export default function SafeRoutePage() {
           {/* TEKS PANDUAN AWAL */}
           {!hasSearched && (
             <div className="text-center py-6 border-t border-gray-100 mt-4">
-              <div className="w-14 h-14 mx-auto mb-2 bg-gray-50 rounded-full flex items-center justify-center text-2xl border border-gray-200">
-                🗺️
+              <div className="w-14 h-14 mx-auto mb-2 bg-gray-50 rounded-full flex items-center justify-center border border-gray-200">
+                <Map className="w-6 h-6 text-gray-500" />
               </div>
               <h3 className="font-bold text-gray-800 text-sm mb-1">Ready for a safe journey?</h3>
               <p className="text-xs text-gray-500 leading-relaxed px-2">
@@ -363,7 +541,13 @@ export default function SafeRoutePage() {
 
         {/* PANEL KANAN: Peta */}
         <div className="flex-1 w-full h-[calc(100vh-72px)] bg-gray-100 relative z-0">
-          <SafeRouteMap />
+          <SafeRouteMap
+            originCoords={originCoords}
+            destCoords={destCoords}
+            routePath={routePath}
+            riskSegments={routeRisk?.segments ?? []}
+            safePoints={safePoints}
+          />
         </div>
 
       </div>

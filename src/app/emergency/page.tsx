@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Heart, MessageCircle, Smartphone, X } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 
 interface Guardian {
@@ -46,7 +47,7 @@ export default function EmergencyPage() {
   };
 
   const handleSendTestAlert = (name: string) => {
-    setAlertMessage(`🚨 Test SOS alert successfully sent to ${name} via WhatsApp & SMS!`);
+    setAlertMessage(`Test SOS alert successfully sent to ${name} via WhatsApp & SMS!`);
     setTimeout(() => setAlertMessage(null), 4000);
   };
 
@@ -71,7 +72,7 @@ export default function EmergencyPage() {
   };
 
   return (
-    /* 🔴 DIKUNCI PAKAI bg-[#F8F9FA] DAN text-gray-900 */
+    /* Dikunci memakai bg-[#F8F9FA] dan text-gray-900 */
     <div className="min-h-screen bg-[#F8F9FA] text-gray-900 font-sans flex flex-col">
       
       {/* NAVBAR FIXED ATAS */}
@@ -88,7 +89,7 @@ export default function EmergencyPage() {
               onClick={() => setAlertMessage(null)}
               className="text-emerald-600 hover:text-emerald-900 font-extrabold"
             >
-              ✕
+              <X className="w-4 h-4" />
             </button>
           </div>
         )}
@@ -140,7 +141,7 @@ export default function EmergencyPage() {
                         )}
                       </div>
                       <p className="text-[11px] font-medium text-gray-400 flex items-center gap-1 mt-0.5">
-                        <span className="text-pink-500">♡</span> {guardian.role}
+                        <Heart className="w-3 h-3 text-pink-500" /> {guardian.role}
                       </p>
                     </div>
                   </div>
@@ -173,10 +174,10 @@ export default function EmergencyPage() {
                     <span className="text-gray-400 font-medium text-[11px]">Alert Channels:</span>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
-                        💬 WhatsApp
+                        <MessageCircle className="w-3 h-3" /> WhatsApp
                       </span>
                       <span className="text-[10px] font-bold bg-amber-50 text-amber-800 px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
-                        📱 SMS
+                        <Smartphone className="w-3 h-3" /> SMS
                       </span>
                     </div>
                   </div>

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-// 🔴 Pake alias '@/components/...' biar Next.js nemu filenya dengan pasti!
+import { Check } from 'lucide-react';
+// Pakai alias '@/components/...' agar Next.js pasti menemukan filenya
 import { Navbar } from '@/components/Navbar'; 
 import { Button, InputField, TextAreaField, FileUpload } from '@/components';
 
@@ -36,7 +37,7 @@ export default function AnonymousReportPage() {
 {/* Left Side: Illustration & Info */}
           <div className="bg-[#FDF2F8] p-8 md:w-5/12 flex flex-col items-center justify-center text-center">
             
-            {/* 🔴 CONTAINER GAMBAR (Border dashed & background pink muda dihapus, diganti bersih) */}
+            {/* Container gambar: border dashed & background pink dihapus */}
             <div className="w-full max-w-[280px] h-64 mb-6 flex items-center justify-center relative">
                <img 
                  src="/policy-bro 1.png" 
@@ -59,8 +60,8 @@ export default function AnonymousReportPage() {
             
             {isSubmitted ? (
               <div className="h-full flex flex-col items-center justify-center text-center py-12 animate-fadeIn">
-                <div className="w-16 h-16 bg-pink-100 text-[#D91176] rounded-full flex items-center justify-center text-3xl mb-4 font-bold">
-                  ✓
+                <div className="w-16 h-16 bg-pink-100 text-[#D91176] rounded-full flex items-center justify-center mb-4">
+                  <Check className="w-8 h-8" strokeWidth={3} />
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 mb-2">Report Submitted Anonymously!</h3>
                 <p className="text-xs text-gray-600 max-w-sm mb-6 leading-relaxed">

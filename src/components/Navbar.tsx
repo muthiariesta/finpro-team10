@@ -8,7 +8,7 @@ import { usePathname } from 'next/navigation';
 interface NavItemProps {
   icon: React.ReactNode;
   label: string;
-  href: string; // 🔴 Tambahkan href agar dinamis
+  href: string; // href dibuat dinamis
 }
 
 // --- 1. NavItem Component ---

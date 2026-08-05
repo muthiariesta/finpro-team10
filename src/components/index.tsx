@@ -46,12 +46,19 @@ export const InputField: React.FC<InputFieldProps> = ({ label, type = 'text', va
 interface TextAreaFieldProps {
   label: string;
   placeholder?: string;
+  value?: string;
+  onChange?: React.ChangeEventHandler<HTMLTextAreaElement>;
 }
-export const TextAreaField: React.FC<TextAreaFieldProps> = ({ label, placeholder }) => {
+export const TextAreaField: React.FC<TextAreaFieldProps> = ({ label, placeholder, value, onChange }) => {
   return (
     <div className="mb-4">
       <label className="block text-[#D91176] font-semibold mb-1 text-sm">{label}</label>
-      <textarea className="w-full p-2.5 border border-gray-300 rounded-md text-sm text-gray-700 outline-none focus:border-[#D91176] min-h-[80px]" placeholder={placeholder}></textarea>
+      <textarea
+        className="w-full p-2.5 border border-gray-300 rounded-md text-sm text-gray-700 outline-none focus:border-[#D91176] min-h-[80px]"
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+      ></textarea>
     </div>
   );
 };
