@@ -14,14 +14,19 @@ export default async function ReportListPage() {
       category: true,
       location: true,
       timestamp: true,
+      createdAt: true,
       description: true,
       evidenceUrl: true,
     },
   });
 
+  // ownerToken sengaja TIDAK ikut dikirim ke klien. Token itu satu-satunya
+  // bukti kepemilikan; membocorkannya berarti siapa pun bisa menghapus
+  // laporan orang lain.
   const items = incidents.map((incident) => ({
     ...incident,
     timestamp: incident.timestamp.toISOString(),
+    createdAt: incident.createdAt.toISOString(),
   }));
 
   return (

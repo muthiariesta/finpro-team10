@@ -7,28 +7,29 @@ import { Navbar } from '@/components/Navbar';
 import {
   Calendar,
   Check,
+  CheckCircle2,
   ChevronDown,
-  CircleEllipsis,
+  Copy,
   Film,
   ListChecks,
   MapPin,
-  MessageCircleWarning,
   Send,
-  ShieldAlert,
   UploadCloud,
-  Wallet,
   X,
 } from 'lucide-react';
+import { CATEGORIES, categoryLabel, formatTimestamp, referenceCode } from '@/lib/reports';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'video/mp4'];
 
-const CATEGORIES = [
-  { value: 'harassment', label: 'Harassment', icon: MessageCircleWarning },
-  { value: 'assault', label: 'Assault', icon: ShieldAlert },
-  { value: 'theft', label: 'Theft', icon: Wallet },
-  { value: 'other', label: 'Other', icon: CircleEllipsis },
-];
+/** Ringkasan laporan yang baru terkirim, untuk ditampilkan di layar konfirmasi. */
+interface SubmittedSummary {
+  reference: string;
+  category: string;
+  location: string;
+  timestamp: string;
+  hasEvidence: boolean;
+}
 
 export default function NewReportPage() {
   const router = useRouter();
@@ -43,6 +44,8 @@ export default function NewReportPage() {
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [submitted, setSubmitted] = useState<SubmittedSummary | null>(null);
+  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timestampRef = useRef<HTMLInputElement>(null);
   const categoryRef = useRef<HTMLDivElement>(null);
@@ -140,7 +143,16 @@ export default function NewReportPage() {
       myReports[created.id] = ownerToken;
       localStorage.setItem('my-reports', JSON.stringify(myReports));
 
+      setSubmitted({
+        reference: referenceCode(created.id, created.createdAt),
+        category: created.category,
+        location: created.location,
+        timestamp: created.timestamp,
+        hasEvidence: Boolean(created.evidenceUrl),
+      });
+
       setStatus('success');
+      setCopied(false);
       setFormData({ category: '', location: '', timestamp: '', description: '' });
       setEvidence(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -154,6 +166,17 @@ export default function NewReportPage() {
     } catch (err) {
       setStatus('error');
       setErrorMessage(err instanceof Error ? err.message : 'Failed to submit report');
+    }
+  };
+
+  const handleCopyReference = async () => {
+    if (!submitted) return;
+    try {
+      await navigator.clipboard.writeText(submitted.reference);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard bisa ditolak browser; kode rujukan tetap terlihat di layar.
     }
   };
 
@@ -194,33 +217,101 @@ export default function NewReportPage() {
 
           {/* Right Side - Form atau konfirmasi setelah terkirim */}
           <div className="flex-1 p-6 md:p-8 overflow-y-auto">
-            {status === 'success' ? (
-              <div className="h-full flex flex-col items-center justify-center text-center py-12">
-                <div className="w-16 h-16 bg-pink-100 text-pink-700 rounded-full flex items-center justify-center mb-4">
-                  <Check className="w-8 h-8" strokeWidth={3} />
+            {status === 'success' && submitted ? (
+              <div className="h-full flex flex-col items-center justify-center py-6">
+                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
+                  <CheckCircle2 className="w-9 h-9" strokeWidth={2.2} />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">
-                  Report Submitted Anonymously!
+
+                <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">
+                  Report Submitted!
                 </h3>
-                <p className="text-xs text-gray-600 max-w-sm mb-6 leading-relaxed">
-                  Thank you for keeping our community safe. Your report has been logged
-                  without any identifying details.
+                <p className="text-xs text-gray-500 italic mb-5 text-center">
+                  Your incident report has been anonymized and registered.
                 </p>
-                <div className="flex flex-col sm:flex-row items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setStatus('idle')}
-                    className="bg-pink-700 hover:bg-pink-800 text-white font-bold py-2.5 px-6 rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer"
-                  >
-                    Submit Another Report
-                  </button>
+
+                {/* Ringkasan agar pelapor memegang bukti bahwa laporannya
+                    tercatat, tanpa perlu membuka daftar terlebih dahulu. */}
+                <div className="w-full max-w-sm bg-neutral-100 rounded-xl p-4 mb-4">
+                  <p className="text-sm font-bold text-gray-900 mb-3">Report Summary</p>
+
+                  <dl className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-gray-500">Report ID</dt>
+                      <dd className="flex items-center gap-1.5">
+                        <span className="font-bold text-pink-700">{submitted.reference}</span>
+                        <button
+                          type="button"
+                          onClick={handleCopyReference}
+                          aria-label="Copy report ID"
+                          className="text-gray-400 hover:text-pink-700 transition-colors"
+                        >
+                          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </dd>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-gray-500">Status</dt>
+                      <dd>
+                        <span className="px-2 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-[10px] font-semibold">
+                          Pending Review
+                        </span>
+                      </dd>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-gray-500">Category</dt>
+                      <dd className="text-gray-900 font-medium text-right">
+                        {categoryLabel(submitted.category)}
+                      </dd>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-gray-500 shrink-0">Location</dt>
+                      <dd className="text-gray-900 font-medium text-right">{submitted.location}</dd>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-gray-500">Timestamp</dt>
+                      <dd className="text-gray-900 font-medium text-right">
+                        {formatTimestamp(submitted.timestamp)}
+                      </dd>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-gray-500">Evidence</dt>
+                      <dd className="text-gray-900 font-medium text-right">
+                        {submitted.hasEvidence ? '1 File Attached (EXIF Stripped)' : 'No file attached'}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <p className="text-[10px] text-gray-500 leading-relaxed max-w-sm mb-5 text-center">
+                  <strong className="text-gray-700 italic">Your privacy is protected.</strong>{' '}
+                  All personal identity and media metadata have been completely stripped to
+                  protect your privacy.
+                </p>
+
+                <div className="w-full max-w-sm border-t border-gray-200 pt-4 flex items-center justify-end gap-3">
                   <Link
                     href="/report"
-                    className="border border-pink-700 text-pink-700 hover:bg-pink-700/5 font-bold py-2.5 px-6 rounded-xl text-xs uppercase tracking-wider transition-colors flex items-center gap-1.5"
+                    className="border border-pink-700 text-pink-700 hover:bg-pink-700/5 font-semibold py-2 px-5 rounded-xl text-sm transition-colors flex items-center gap-1.5"
                   >
-                    <ListChecks className="w-3.5 h-3.5" />
-                    View All Reports
+                    <ListChecks className="w-4 h-4" />
+                    View History
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatus('idle');
+                      setSubmitted(null);
+                    }}
+                    className="bg-pink-700 hover:bg-pink-800 text-white font-semibold py-2 px-6 rounded-xl text-sm transition-colors cursor-pointer"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             ) : (

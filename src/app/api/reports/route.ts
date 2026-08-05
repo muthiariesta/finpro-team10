@@ -61,5 +61,8 @@ export async function POST(request: Request) {
     },
   });
 
-  return NextResponse.json(incident, { status: 201 });
+  // ownerToken tidak dikembalikan; klien sudah menyimpannya sendiri, dan
+  // token itu satu-satunya bukti kepemilikan laporan anonim ini.
+  const { ownerToken: _omit, ...safe } = incident;
+  return NextResponse.json(safe, { status: 201 });
 }
