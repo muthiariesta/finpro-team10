@@ -11,13 +11,22 @@ import { CircleX, ExternalLink, MapPin, PhoneCall, Siren } from 'lucide-react';
  */
 
 interface Props {
+  /** Jalur pengiriman; SMS tampil polos tanpa tombol aksi. */
+  channel: 'whatsapp' | 'sms';
   coords: { lat: number; lon: number } | null;
   trackingUrl: string;
   contactName?: string;
   onClose: () => void;
 }
 
-export default function GuardianPreview({ coords, trackingUrl, contactName, onClose }: Props) {
+export default function GuardianPreview({
+  channel,
+  coords,
+  trackingUrl,
+  contactName,
+  onClose,
+}: Props) {
+  const isSms = channel === 'sms';
   const mapsUrl = coords
     ? `https://www.google.com/maps?q=${coords.lat},${coords.lon}`
     : null;
@@ -36,7 +45,8 @@ export default function GuardianPreview({ coords, trackingUrl, contactName, onCl
               Simulation Preview
             </p>
             <p className="text-xs font-semibold truncate">
-              What {contactName ?? 'your guardian'} would receive
+              What {contactName ?? 'your guardian'} would receive via{' '}
+              {isSms ? 'SMS' : 'WhatsApp'}
             </p>
           </div>
           <button
@@ -50,7 +60,7 @@ export default function GuardianPreview({ coords, trackingUrl, contactName, onCl
         </div>
 
         {/* Latar khas ruang obrolan */}
-        <div className="bg-[#ECE5DD] p-4 overflow-y-auto flex-1">
+        <div className={`p-4 overflow-y-auto flex-1 ${isSms ? 'bg-gray-100' : 'bg-[#ECE5DD]'}`}>
           <div className="bg-white rounded-xl rounded-tl-sm shadow-sm overflow-hidden">
             <div className="bg-red-600 text-white px-3.5 py-2.5 flex items-center gap-2">
               <Siren className="w-4 h-4 shrink-0" />
@@ -108,7 +118,16 @@ export default function GuardianPreview({ coords, trackingUrl, contactName, onCl
             </div>
           </div>
 
-          {/* Aksi yang biasanya diambil penerima */}
+          {isSms && (
+            <p className="mt-3 text-[10px] text-gray-500 leading-relaxed">
+              Sent as plain text so it still arrives without a data connection.
+              Links are not clickable in every SMS app, so the coordinates are
+              written out in full.
+            </p>
+          )}
+
+          {/* Aksi yang biasanya diambil penerima; hanya ada pada WhatsApp */}
+          {!isSms && (
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -128,6 +147,7 @@ export default function GuardianPreview({ coords, trackingUrl, contactName, onCl
               Open tracking
             </a>
           </div>
+          )}
         </div>
       </div>
     </div>

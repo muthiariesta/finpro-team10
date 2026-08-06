@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { fetchGuardians, type Guardian } from '@/lib/guardians';
 import GuardianPreview from './GuardianPreview';
+import { useAlertChannel } from '@/lib/channel';
 
 /**
  * Modal SOS.
@@ -35,6 +36,7 @@ type Dispatch =
 const POLICE_NUMBER = '110';
 
 export default function SosModal({ onClose }: { onClose: () => void }) {
+  const [channel] = useAlertChannel();
   const [seconds, setSeconds] = useState(0);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [geoDenied, setGeoDenied] = useState(false);
@@ -102,6 +104,7 @@ export default function SosModal({ onClose }: { onClose: () => void }) {
             lat,
             lon,
             trackingUrl: `${window.location.origin}/in-trip`,
+            channel,
           }),
         });
         const data = await res.json();
@@ -188,6 +191,7 @@ export default function SosModal({ onClose }: { onClose: () => void }) {
         <DispatchCard
           dispatch={dispatch}
           guardians={guardians.length}
+          channel={channel}
           onPreview={() => setPreviewOpen(true)}
         />
 
@@ -212,6 +216,7 @@ export default function SosModal({ onClose }: { onClose: () => void }) {
 
       {previewOpen && (
         <GuardianPreview
+          channel={channel}
           coords={coords}
           trackingUrl={`${typeof window === 'undefined' ? '' : window.location.origin}/in-trip`}
           contactName={guardians[0]?.name}
@@ -253,12 +258,15 @@ function EvidenceRow({
 function DispatchCard({
   dispatch,
   guardians,
+  channel,
   onPreview,
 }: {
   dispatch: Dispatch;
   guardians: number;
+  channel: 'whatsapp' | 'sms';
   onPreview: () => void;
 }) {
+  const channelLabel = channel === 'sms' ? 'SMS' : 'WhatsApp';
   if (dispatch.state === 'sending') {
     return (
       <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 flex items-start gap-2.5">
@@ -298,7 +306,7 @@ function DispatchCard({
         <div className="min-w-0">
           <p className="text-xs font-bold text-emerald-900">DATA DISPATCH CONFIRMED</p>
           <p className="text-xs text-emerald-900 leading-snug">
-            WhatsApp Alert &amp; Live Tracking link dispatched to {delivered} Emergency
+            {channelLabel} Alert &amp; Live Tracking link dispatched to {delivered} Emergency
             Contact{total === 1 ? '' : 's'}.
           </p>
         </div>
@@ -317,7 +325,7 @@ function DispatchCard({
 
       {simulated && (
         <p className="mt-2 text-[10px] text-emerald-800/80 leading-snug">
-          Demo mode: message delivery is simulated, no gateway is connected yet.
+          Demo mode: {channelLabel} delivery is simulated, no gateway is connected yet.
         </p>
       )}
     </div>

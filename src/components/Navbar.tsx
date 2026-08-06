@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FileText, Menu, Navigation, Phone, Wifi, X } from 'lucide-react';
+import { FileText, Menu, MessageSquare, Navigation, Phone, Wifi, X } from 'lucide-react';
+import { useAlertChannel } from '@/lib/channel';
 import SosButton from './SosButton';
 
 /**
@@ -47,27 +48,70 @@ const NavItem: React.FC<NavLink> = ({ icon, label, href }) => {
   );
 };
 
-/** Versi ringkas dipakai di layar sempit agar tidak mendesak tombol SOS. */
+/**
+ * Sakelar jalur peringatan.
+ *
+ * Mati berarti WhatsApp tidak dipakai dan sistem beralih ke SMS. Sengaja
+ * dibuat bisa diubah manual supaya pengguna di daerah sinyal lemah dapat
+ * memilih jalur yang paling mungkin sampai, tanpa menunggu sistem menebak.
+ * Versi ringkas dipakai di layar sempit agar tidak mendesak tombol SOS.
+ */
 const OnlineToggle: React.FC<{ compact?: boolean }> = ({ compact }) => {
+  const [channel, setChannel] = useAlertChannel();
+  const isWa = channel === 'whatsapp';
+
+  const toggle = () => setChannel(isWa ? 'sms' : 'whatsapp');
+  const label = isWa ? 'Online (WhatsApp)' : 'Fallback (SMS)';
+  const tone = isWa ? 'text-[#20B08E]' : 'text-amber-600';
+
   if (compact) {
     return (
-      <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-full px-2 py-1.5 shadow-sm">
-        <span className="w-2 h-2 rounded-full bg-[#20B08E]" />
-        <WhatsAppIcon className="w-3.5 h-3.5 text-[#20B08E]" />
-      </div>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={`Alert channel: ${label}. Tap to switch.`}
+        title={label}
+        className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-full px-2 py-1.5 shadow-sm"
+      >
+        <span className={`w-2 h-2 rounded-full ${isWa ? 'bg-[#20B08E]' : 'bg-amber-500'}`} />
+        {isWa ? (
+          <WhatsAppIcon className="w-3.5 h-3.5 text-[#20B08E]" />
+        ) : (
+          <MessageSquare className="w-3.5 h-3.5 text-amber-600" />
+        )}
+      </button>
     );
   }
 
   return (
-    <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-full px-3 py-1.5 shadow-sm">
-      <div className="w-9 h-5 bg-[#20B08E] rounded-full relative flex items-center px-0.5 cursor-pointer">
-        <div className="w-4 h-4 bg-white rounded-full absolute right-0.5 shadow-sm" />
-      </div>
-      <div className="flex items-center gap-1.5 text-[#20B08E] text-xs font-bold whitespace-nowrap">
-        <WhatsAppIcon className="w-3.5 h-3.5" />
-        Online (WhatsApp)
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={toggle}
+      aria-pressed={isWa}
+      aria-label={`Alert channel: ${label}. Click to switch.`}
+      title="Switch alert channel"
+      className="flex items-center gap-3 bg-white border border-gray-200 rounded-full px-3 py-1.5 shadow-sm hover:border-gray-300 transition-colors cursor-pointer"
+    >
+      <span
+        className={`w-9 h-5 rounded-full relative flex items-center px-0.5 transition-colors ${
+          isWa ? 'bg-[#20B08E]' : 'bg-gray-300'
+        }`}
+      >
+        <span
+          className={`w-4 h-4 bg-white rounded-full absolute shadow-sm transition-all ${
+            isWa ? 'right-0.5' : 'left-0.5'
+          }`}
+        />
+      </span>
+      <span className={`flex items-center gap-1.5 text-xs font-bold whitespace-nowrap ${tone}`}>
+        {isWa ? (
+          <WhatsAppIcon className="w-3.5 h-3.5" />
+        ) : (
+          <MessageSquare className="w-3.5 h-3.5" />
+        )}
+        {label}
+      </span>
+    </button>
   );
 };
 

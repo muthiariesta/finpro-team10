@@ -84,6 +84,7 @@ export async function POST(request: Request) {
     lon?: number;
     trackingUrl?: string;
   };
+  const channel: 'whatsapp' | 'sms' = body.channel === 'sms' ? 'sms' : 'whatsapp';
 
   if (contacts.length === 0) {
     return NextResponse.json({ error: 'no emergency contacts provided' }, { status: 400 });
@@ -111,13 +112,18 @@ export async function POST(request: Request) {
     .filter(Boolean)
     .join('\n');
 
-  const token = process.env.FONNTE_TOKEN;
+  // SMS memakai gateway berbeda dari WhatsApp. Selama belum dipasang, jalur
+  // ini dilaporkan sebagai simulasi, bukan diam-diam dialihkan ke WhatsApp -
+  // pengguna memilih SMS justru karena data sedang tidak bisa diandalkan,
+  // jadi mengirim lewat WhatsApp malah tidak menjawab masalahnya.
+  const token = channel === 'whatsapp' ? process.env.FONNTE_TOKEN : process.env.SMS_TOKEN;
 
   // Tanpa gateway, jangan berpura-pura mengirim.
   if (!token) {
-    console.warn('[sos] FONNTE_TOKEN belum diisi - pengiriman disimulasikan');
+    console.warn(`[sos] gateway ${channel} belum diisi - pengiriman disimulasikan`);
     return NextResponse.json({
       simulated: true,
+      channel,
       message,
       results: contacts.map((c) => ({ name: c.name, phone: c.phone, ok: false })),
     });
@@ -135,5 +141,5 @@ export async function POST(request: Request) {
     console.error('[sos] semua pengiriman gagal:', JSON.stringify(results));
   }
 
-  return NextResponse.json({ simulated: false, delivered, results });
+  return NextResponse.json({ simulated: false, channel, delivered, results });
 }
