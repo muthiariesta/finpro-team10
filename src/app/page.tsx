@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { Info, Loader2, Map, TriangleAlert } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
+import LocationInput, { type PlaceSuggestion } from '../components/LocationInput';
 import {
   fetchRouteRisk,
   toApiDatetime,
@@ -76,6 +77,9 @@ export default function SafeRoutePage() {
   const [originText, setOriginText] = useState('The Loop, Chicago');
   const [destinationText, setDestinationText] = useState('West Garfield Park, Chicago');
   const [departureTime, setDepartureTime] = useState('21:30');
+  /** Koordinat dari saran yang dipilih; menghindari geocoding ulang. */
+  const [pickedOrigin, setPickedOrigin] = useState<LatLng | null>(null);
+  const [pickedDest, setPickedDest] = useState<LatLng | null>(null);
 
   // Fungsi Fetch ke Nominatim, OSRM, & RiskScore API
   const handleFindRoutes = async (e: React.FormEvent) => {
@@ -89,8 +93,8 @@ export default function SafeRoutePage() {
 
     // 1. Ubah kedua input menjadi koordinat. Berurutan, bukan paralel:
     //    Nominatim membatasi 1 permintaan per detik.
-    const origin = await geocode(originText);
-    const dest = await geocode(destinationText);
+    const origin = pickedOrigin ?? (await geocode(originText));
+    const dest = pickedDest ?? (await geocode(destinationText));
 
     if (!origin || !dest) {
       const failed = !origin ? originText : destinationText;
@@ -194,10 +198,10 @@ export default function SafeRoutePage() {
       </header>
 
       {/* KONTEN UTAMA */}
-      <div className="flex flex-col lg:flex-row flex-1 h-screen pt-[72px] overflow-hidden"> 
+      <div className="flex flex-col lg:flex-row flex-1 lg:h-screen pt-[72px] lg:overflow-hidden"> 
         
         {/* PANEL KIRI: Form & Hasil Rute */}
-        <div className="w-full lg:w-[420px] bg-white p-5 border-r border-gray-200 flex flex-col justify-between z-10 shadow-lg overflow-y-auto max-h-full">
+        <div className="w-full lg:w-[420px] bg-white px-4 sm:px-6 py-5 border-b lg:border-b-0 lg:border-r border-gray-200 flex flex-col justify-between z-10 shadow-lg lg:overflow-y-auto lg:max-h-full">
           <div>
             
             {/* 1. CONTAINER FORM LOKASI UTAMA */}
@@ -213,12 +217,14 @@ export default function SafeRoutePage() {
                   </svg>
                 </div>
                 
-                <input
-                  type="text"
+                <LocationInput
                   value={originText}
-                  onChange={(e) => setOriginText(e.target.value)}
+                  onChange={(v) => {
+                    setOriginText(v);
+                    setPickedOrigin(null);
+                  }}
+                  onSelect={(p: PlaceSuggestion) => setPickedOrigin(p.coords)}
                   placeholder="Where are you starting from?"
-                  className="w-full text-sm font-semibold text-gray-800 bg-transparent outline-none placeholder-gray-400"
                 />
               </div>
 
@@ -230,6 +236,8 @@ export default function SafeRoutePage() {
                   onClick={() => {
                     setOriginText(destinationText);
                     setDestinationText(originText);
+                    setPickedOrigin(pickedDest);
+                    setPickedDest(pickedOrigin);
                   }}
                   className="absolute right-0 text-gray-600 hover:text-black transition-colors cursor-pointer bg-white px-1"
                   title="Swap locations"
@@ -249,12 +257,14 @@ export default function SafeRoutePage() {
                   </svg>
                 </div>
 
-                <input
-                  type="text"
+                <LocationInput
                   value={destinationText}
-                  onChange={(e) => setDestinationText(e.target.value)}
+                  onChange={(v) => {
+                    setDestinationText(v);
+                    setPickedDest(null);
+                  }}
+                  onSelect={(p: PlaceSuggestion) => setPickedDest(p.coords)}
                   placeholder="Where are you going?"
-                  className="w-full text-sm font-semibold text-gray-800 bg-transparent outline-none placeholder-gray-400 focus:placeholder-gray-300"
                 />
               </div>
             </div>
@@ -564,7 +574,7 @@ export default function SafeRoutePage() {
         </div>
 
         {/* PANEL KANAN: Peta */}
-        <div className="flex-1 w-full h-[calc(100vh-72px)] bg-gray-100 relative z-0">
+        <div className="flex-1 w-full h-[60vh] lg:h-[calc(100vh-72px)] bg-gray-100 relative z-0">
           <SafeRouteMap
             originCoords={originCoords}
             destCoords={destCoords}

@@ -255,11 +255,11 @@ export default function NewReportPage() {
         <Navbar />
       </header>
 
-      <main className="max-w-5xl mx-auto w-full pt-[96px] pb-12 px-6 flex-1">
+      <main className="max-w-5xl mx-auto w-full pt-[96px] pb-12 px-4 sm:px-6 flex-1">
         {status === 'success' && submitted ? (
           /* Setelah terkirim, tampilkan satu kartu konfirmasi saja - tanpa
              kolom ilustrasi - agar perhatian tertuju pada ringkasan laporan. */
-          <div className="max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-gray-100 p-8 flex flex-col items-center">
+          <div className="max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8 flex flex-col items-center">
             <img
               src="/assets/submitted-check.png"
               alt=""
@@ -285,7 +285,7 @@ export default function NewReportPage() {
               protect your privacy.
             </p>
 
-            <div className="w-full border-t border-gray-200 pt-4 flex items-center justify-end gap-3">
+            <div className="w-full border-t border-gray-200 pt-4 flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-3">
               <Link
                 href="/report"
                 className="border border-pink-700 text-pink-700 hover:bg-pink-700/5 font-semibold py-2 px-5 rounded-xl text-sm transition-colors flex items-center gap-1.5"
@@ -308,7 +308,7 @@ export default function NewReportPage() {
         ) : (
         <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col md:flex-row">
           {/* Left Side - Illustration & Text */}
-          <div className="bg-[#FDF2F8] p-8 md:w-5/12 flex flex-col items-center justify-center text-center">
+          <div className="bg-[#FDF2F8] p-6 sm:p-8 md:w-5/12 flex flex-col items-center justify-center text-center">
             <div className="w-full max-w-[280px] h-64 mb-6 flex items-center justify-center">
               <img
                 src="/assets/vector-report.png"
@@ -327,7 +327,7 @@ export default function NewReportPage() {
           </div>
 
           {/* Right Side - Form atau konfirmasi setelah terkirim */}
-          <div className="p-8 md:w-7/12 flex flex-col justify-between">
+          <div className="p-6 sm:p-8 md:w-7/12 flex flex-col justify-between">
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Category */}
               <div ref={categoryRef} className="relative">

@@ -36,14 +36,14 @@ export default async function ReportListPage() {
         <Navbar />
       </header>
 
-      <main className="max-w-6xl mx-auto w-full pt-[96px] pb-12 px-6 flex-1">
+      <main className="max-w-6xl mx-auto w-full pt-[96px] pb-12 px-4 sm:px-6 flex-1">
         {/* Banner header mengikuti pola halaman Emergency agar seragam */}
         <div className="bg-white border border-gray-200/80 rounded-2xl p-6 mb-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="inline-block text-[10px] font-extrabold text-[#D91176] bg-pink-50 px-3 py-1 rounded-full uppercase tracking-wider mb-2 border border-pink-100">
               COMMUNITY SAFETY LOG
             </span>
-            <h1 className="text-2xl font-black text-gray-900 tracking-tight mb-1">
+            <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight mb-1">
               Incident Reports
             </h1>
             <p className="text-xs font-medium text-gray-500">

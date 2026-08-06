@@ -22,3 +22,22 @@ model Incident {
   ownerToken  String
   createdAt   DateTime @default(now())
 }
+
+/// Kontak darurat milik satu perangkat.
+///
+/// Tidak ada akun pengguna di MVP ini, jadi kepemilikan ditandai dengan
+/// ownerToken yang disimpan di localStorage - pola yang sama dengan laporan
+/// anonim. Tanpa itu, nomor telepon orang terdekat akan terlihat oleh semua
+/// pengunjung aplikasi.
+model Guardian {
+  id         String   @id @default(cuid())
+  name       String
+  role       String
+  phone      String
+  isPrimary  Boolean  @default(false)
+  channels   String[]
+  ownerToken String
+  createdAt  DateTime @default(now())
+
+  @@index([ownerToken])
+}

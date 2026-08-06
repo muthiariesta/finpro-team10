@@ -170,9 +170,9 @@ export default function InTripPage() {
         <Navbar />
       </header>
 
-      <div className="flex flex-col lg:flex-row flex-1 h-screen pt-[72px] overflow-hidden">
+      <div className="flex flex-col lg:flex-row flex-1 lg:h-screen pt-[72px] lg:overflow-hidden">
         {/* PANEL KIRI */}
-        <div className="w-full lg:w-[420px] bg-[#F8F9FA] p-5 border-r border-gray-200 overflow-y-auto max-h-full">
+        <div className="w-full lg:w-[420px] bg-[#F8F9FA] px-4 sm:px-6 py-5 border-b lg:border-b-0 lg:border-r border-gray-200 lg:overflow-y-auto lg:max-h-full">
           {phase === 'setup' && (
             <SetupPanel
               plan={plan}
@@ -203,7 +203,7 @@ export default function InTripPage() {
         </div>
 
         {/* PANEL KANAN: PETA */}
-        <div className="flex-1 w-full h-[calc(100vh-72px)] bg-gray-100 relative z-0">
+        <div className="flex-1 w-full h-[60vh] lg:h-[calc(100vh-72px)] bg-gray-100 relative z-0">
           <InTripMap
             routePath={plan.routePath}
             originCoords={plan.originCoords}
@@ -242,7 +242,7 @@ function SetupPanel({
       <span className="inline-block text-[10px] font-extrabold text-[#D91176] bg-pink-50 px-3 py-1 rounded-full uppercase tracking-wider mb-2 border border-pink-100">
         In-Trip Safeguard Engine
       </span>
-      <h1 className="text-2xl font-black text-gray-900 tracking-tight mb-1">
+      <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight mb-1">
         Trip Setup &amp; Guardian Sync
       </h1>
       <p className="text-xs font-medium text-gray-500 mb-4 leading-relaxed">
@@ -272,7 +272,7 @@ function SetupPanel({
 
       {/* Moda transportasi */}
       <p className="text-xs font-semibold text-gray-700 mb-2">Transport Mode</p>
-      <div className="grid grid-cols-2 gap-2 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
         <button
           type="button"
           onClick={() => setMode('personal')}
@@ -307,7 +307,7 @@ function SetupPanel({
             <BadgeCheck className="w-4 h-4 text-[#D91176]" />
             Driver &amp; Vehicle Info
           </p>
-          <div className="grid grid-cols-2 gap-2 mb-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
             <LabeledInput
               label="Driver Name"
               value={driver.name}

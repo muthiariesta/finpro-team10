@@ -1,40 +1,29 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Heart, MessageCircle, Smartphone, X } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
-
-interface Guardian {
-  id: string;
-  name: string;
-  role: string;
-  isPrimary?: boolean;
-  phone: string;
-  channels: string[];
-  initial: string;
-}
+import {
+  createGuardian,
+  deleteGuardian,
+  fetchGuardians,
+  initialOf,
+  type Guardian,
+} from '@/lib/guardians';
 
 export default function EmergencyPage() {
-  const [guardians, setGuardians] = useState<Guardian[]>([
-    {
-      id: '1',
-      name: 'Mother',
-      role: 'Primary Parent',
-      isPrimary: true,
-      phone: '+6281234567890',
-      channels: ['WhatsApp', 'SMS'],
-      initial: 'M',
-    },
-    {
-      id: '2',
-      name: 'Budi Santoso',
-      role: 'Guardian',
-      isPrimary: false,
-      phone: '+6281399887766',
-      channels: ['WhatsApp', 'SMS'],
-      initial: 'B',
-    },
-  ]);
+  const [guardians, setGuardians] = useState<Guardian[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [formError, setFormError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Kontak tersimpan di basis data dan dipakai bersama tombol SOS.
+  // Dimuat di useEffect karena ownerToken hanya ada di sisi klien.
+  useEffect(() => {
+    fetchGuardians()
+      .then(setGuardians)
+      .finally(() => setIsLoading(false));
+  }, []);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newName, setNewName] = useState('');
@@ -42,8 +31,21 @@ export default function EmergencyPage() {
   const [newPhone, setNewPhone] = useState('');
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    const target = guardians.find((g) => g.id === id);
+    if (!confirm(`Remove ${target?.name ?? 'this contact'} from your guardians?`)) return;
+
+    // Dihapus dari tampilan lebih dulu agar terasa responsif, lalu
+    // dikembalikan bila server menolak.
+    const previous = guardians;
     setGuardians((prev) => prev.filter((g) => g.id !== id));
+    try {
+      await deleteGuardian(id);
+    } catch (err) {
+      setGuardians(previous);
+      setAlertMessage(err instanceof Error ? err.message : 'Failed to remove contact');
+      setTimeout(() => setAlertMessage(null), 4000);
+    }
   };
 
   const handleSendTestAlert = (name: string) => {
@@ -51,24 +53,31 @@ export default function EmergencyPage() {
     setTimeout(() => setAlertMessage(null), 4000);
   };
 
-  const handleAddContact = (e: React.FormEvent) => {
+  const handleAddContact = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName || !newPhone) return;
+    if (!newName.trim() || !newPhone.trim()) {
+      setFormError('Name and phone number are required');
+      return;
+    }
 
-    const newGuardian: Guardian = {
-      id: Date.now().toString(),
-      name: newName,
-      role: newRole,
-      isPrimary: false,
-      phone: newPhone,
-      channels: ['WhatsApp', 'SMS'],
-      initial: newName.charAt(0).toUpperCase(),
-    };
-
-    setGuardians([...guardians, newGuardian]);
-    setNewName('');
-    setNewPhone('');
-    setIsModalOpen(false);
+    setIsSaving(true);
+    setFormError('');
+    try {
+      const created = await createGuardian({
+        name: newName,
+        role: newRole,
+        phone: newPhone,
+        isPrimary: guardians.length === 0,
+      });
+      setGuardians((prev) => [...prev, created]);
+      setNewName('');
+      setNewPhone('');
+      setIsModalOpen(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to add contact');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -81,7 +90,7 @@ export default function EmergencyPage() {
       </header>
 
       {/* KONTEN UTAMA */}
-      <main className="max-w-6xl mx-auto w-full pt-[96px] pb-12 px-6 flex-1">
+      <main className="max-w-6xl mx-auto w-full pt-[96px] pb-12 px-4 sm:px-6 flex-1">
         {alertMessage && (
           <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center justify-between shadow-sm animate-fadeIn">
             <span>{alertMessage}</span>
@@ -100,7 +109,7 @@ export default function EmergencyPage() {
             <span className="inline-block text-[10px] font-extrabold text-[#D91176] bg-pink-50 px-3 py-1 rounded-full uppercase tracking-wider mb-2 border border-pink-100">
               TRUSTED GUARDIAN CIRCLE
             </span>
-            <h1 className="text-2xl font-black text-gray-900 tracking-tight mb-1">
+            <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight mb-1">
               Emergency Contacts &amp; Guardians
             </h1>
             <p className="text-xs font-medium text-gray-500">
@@ -117,6 +126,19 @@ export default function EmergencyPage() {
         </div>
 
         {/* 2. EMERGENCY CONTACT CARDS GRID */}
+        {isLoading && (
+          <p className="text-xs text-gray-500 font-medium">Loading your guardians...</p>
+        )}
+
+        {!isLoading && guardians.length === 0 && (
+          <div className="bg-white border border-dashed border-pink-200 rounded-2xl p-10 text-center">
+            <p className="text-sm font-bold text-gray-800 mb-1">No guardians yet</p>
+            <p className="text-xs text-gray-500">
+              Add someone you trust. They will receive your SOS alerts and live tracking link.
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {guardians.map((guardian) => (
             <div
@@ -127,7 +149,7 @@ export default function EmergencyPage() {
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-11 h-11 bg-pink-50 text-[#D91176] font-extrabold rounded-2xl flex items-center justify-center text-base border border-pink-100">
-                      {guardian.initial}
+                      {initialOf(guardian.name)}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -302,6 +324,10 @@ export default function EmergencyPage() {
                   </label>
                 </div>
 
+                {formError && (
+                  <p className="mt-3 text-xs font-semibold text-red-600">{formError}</p>
+                )}
+
                 {/* FIELD 5: FOOTER BUTTONS */}
                 <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-100 mt-6">
                   <button
@@ -313,9 +339,10 @@ export default function EmergencyPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 text-xs font-bold text-white bg-[#D91176] hover:bg-[#b80d63] rounded-full transition-colors cursor-pointer shadow-sm"
+                    disabled={isSaving}
+                    className="px-6 py-2.5 text-xs font-bold text-white bg-[#D91176] hover:bg-[#b80d63] rounded-full transition-colors cursor-pointer shadow-sm disabled:opacity-50"
                   >
-                    Save Contact
+                    {isSaving ? 'Saving...' : 'Save Contact'}
                   </button>
                 </div>
 
