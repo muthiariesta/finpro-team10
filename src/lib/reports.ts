@@ -39,11 +39,26 @@ export const CATEGORY_ICONS: Record<string, LucideIcon> = Object.fromEntries(
   CATEGORIES.map((c) => [c.value, c.icon])
 );
 
-export const CATEGORY_STYLES: Record<string, string> = {
-  harassment: 'bg-orange-100 text-orange-700',
-  assault: 'bg-red-100 text-red-700',
-  theft: 'bg-yellow-100 text-yellow-700',
-  other: 'bg-neutral-200 text-neutral-700',
+/**
+ * Kategori sengaja tampil netral. Mewarnai jenis insiden membuat sebagian
+ * laporan terlihat lebih "berat" daripada yang lain padahal tingkat
+ * keparahannya belum dinilai siapa pun. Warna disimpan untuk status, yang
+ * memang menyampaikan kemajuan penanganan.
+ */
+export const CATEGORY_STYLE = 'bg-neutral-100 text-neutral-700 border border-neutral-200';
+
+export type ReportStatus = 'pending' | 'reviewing' | 'resolved';
+
+export const STATUS_LABELS: Record<ReportStatus, string> = {
+  pending: 'Pending Review',
+  reviewing: 'On Review',
+  resolved: 'Resolved',
+};
+
+export const STATUS_STYLES: Record<ReportStatus, string> = {
+  pending: 'border border-amber-300 bg-amber-50 text-amber-700',
+  reviewing: 'border border-blue-300 bg-blue-50 text-blue-700',
+  resolved: 'border border-emerald-300 bg-emerald-50 text-emerald-700',
 };
 
 export function categoryLabel(value: string): string {
@@ -54,8 +69,8 @@ export function categoryIcon(value: string): LucideIcon {
   return CATEGORY_ICONS[value] ?? CircleEllipsis;
 }
 
-export function categoryStyle(value: string): string {
-  return CATEGORY_STYLES[value] ?? CATEGORY_STYLES.other;
+export function categoryStyle(): string {
+  return CATEGORY_STYLE;
 }
 
 /**

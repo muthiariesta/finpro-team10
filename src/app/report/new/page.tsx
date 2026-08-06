@@ -5,18 +5,16 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import {
-  Calendar,
   Check,
-  CheckCircle2,
   ChevronDown,
   Copy,
   Film,
   ListChecks,
   MapPin,
-  Send,
   UploadCloud,
   X,
 } from 'lucide-react';
+import DateTimePicker from '@/components/DateTimePicker';
 import { CATEGORIES, categoryLabel, formatTimestamp, referenceCode } from '@/lib/reports';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -29,6 +27,75 @@ interface SubmittedSummary {
   location: string;
   timestamp: string;
   hasEvidence: boolean;
+}
+
+/** Kartu ringkasan laporan pada layar konfirmasi. */
+function SubmittedSummaryCard({
+  summary,
+  copied,
+  onCopy,
+}: {
+  summary: SubmittedSummary;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="w-full bg-neutral-100 rounded-xl p-4 mb-4">
+      <p className="text-sm font-bold text-gray-900 mb-3">Report Summary</p>
+
+      <dl className="space-y-2 text-xs">
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-gray-500">Report ID</dt>
+          <dd className="flex items-center gap-1.5">
+            <span className="font-bold text-pink-700">{summary.reference}</span>
+            <button
+              type="button"
+              onClick={onCopy}
+              aria-label="Copy report ID"
+              className="text-gray-400 hover:text-pink-700 transition-colors"
+            >
+              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          </dd>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-gray-500">Status</dt>
+          <dd>
+            <span className="px-2 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-[10px] font-semibold">
+              Pending Review
+            </span>
+          </dd>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-gray-500">Category</dt>
+          <dd className="text-gray-900 font-medium text-right">
+            {categoryLabel(summary.category)}
+          </dd>
+        </div>
+
+        <div className="flex items-start justify-between gap-3">
+          <dt className="text-gray-500 shrink-0">Location</dt>
+          <dd className="text-gray-900 font-medium text-right">{summary.location}</dd>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-gray-500">Timestamp</dt>
+          <dd className="text-gray-900 font-medium text-right">
+            {formatTimestamp(summary.timestamp)}
+          </dd>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <dt className="text-gray-500">Evidence</dt>
+          <dd className="text-gray-900 font-medium text-right">
+            {summary.hasEvidence ? '1 File Attached (EXIF Stripped)' : 'No file attached'}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
 }
 
 export default function NewReportPage() {
@@ -47,7 +114,6 @@ export default function NewReportPage() {
   const [submitted, setSubmitted] = useState<SubmittedSummary | null>(null);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const timestampRef = useRef<HTMLInputElement>(null);
   const categoryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -183,138 +249,85 @@ export default function NewReportPage() {
   const selectedCategory = CATEGORIES.find(c => c.value === formData.category);
 
   return (
-    <div className="w-full min-h-screen bg-[#FAFAFA] pt-[72px]">
-      {/* Navbar dipasang per halaman, mengikuti pola halaman lain di main. */}
+    <div className="min-h-screen bg-[#F8F9FA] text-gray-900 font-sans flex flex-col">
+      {/* Header disamakan dengan halaman Emergency agar seragam */}
       <header className="fixed top-0 left-0 right-0 h-[72px] z-50 bg-white border-b border-gray-200">
         <Navbar />
       </header>
 
-      <div className="max-w-7xl mx-auto py-6 px-6 md:px-20">
-        {/* Main Container */}
-        <div className="w-full bg-white rounded-[20px] border border-pink-700 overflow-hidden flex flex-col md:flex-row md:h-[816px]">
+      <main className="max-w-5xl mx-auto w-full pt-[96px] pb-12 px-6 flex-1">
+        {status === 'success' && submitted ? (
+          /* Setelah terkirim, tampilkan satu kartu konfirmasi saja - tanpa
+             kolom ilustrasi - agar perhatian tertuju pada ringkasan laporan. */
+          <div className="max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-gray-100 p-8 flex flex-col items-center">
+            <img
+              src="/assets/submitted-check.png"
+              alt=""
+              className="w-40 h-40 object-contain mb-4"
+            />
+
+            <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">
+              Report Submitted!
+            </h3>
+            <p className="text-xs text-gray-500 italic mb-5 text-center">
+              Your incident report has been anonymized and registered.
+            </p>
+
+            <SubmittedSummaryCard
+              summary={submitted}
+              copied={copied}
+              onCopy={handleCopyReference}
+            />
+
+            <p className="text-[10px] text-gray-500 leading-relaxed mb-5 text-center">
+              <strong className="text-gray-700 italic">Your privacy is protected.</strong>{' '}
+              All personal identity and media metadata have been completely stripped to
+              protect your privacy.
+            </p>
+
+            <div className="w-full border-t border-gray-200 pt-4 flex items-center justify-end gap-3">
+              <Link
+                href="/report"
+                className="border border-pink-700 text-pink-700 hover:bg-pink-700/5 font-semibold py-2 px-5 rounded-xl text-sm transition-colors flex items-center gap-1.5"
+              >
+                <ListChecks className="w-4 h-4" />
+                View History
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('idle');
+                  setSubmitted(null);
+                }}
+                className="bg-pink-700 hover:bg-pink-800 text-white font-semibold py-2 px-6 rounded-xl text-sm transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        ) : (
+        <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col md:flex-row">
           {/* Left Side - Illustration & Text */}
-          <div className="w-full md:w-[605px] bg-pink-700/10 rounded-t-[20px] md:rounded-t-none md:rounded-l-[20px] flex flex-col items-center justify-center shrink-0 p-6 md:p-8">
-            {/* Vector Illustration */}
-            <div className="mb-4 md:mb-8">
+          <div className="bg-[#FDF2F8] p-8 md:w-5/12 flex flex-col items-center justify-center text-center">
+            <div className="w-full max-w-[280px] h-64 mb-6 flex items-center justify-center">
               <img
                 src="/assets/vector-report.png"
                 alt="Report Incident Illustration"
-                className="w-40 h-32 md:w-[400px] md:h-[350px] object-contain"
+                className="w-full h-full object-contain"
               />
             </div>
 
-            {/* Text Section */}
-            <div className="text-center space-y-2 md:space-y-4">
-              <h2 className="text-pink-700 text-xl md:text-2xl font-semibold">Report an Incident</h2>
-              <p className="text-pink-700 text-sm md:text-base font-semibold leading-6">
-                Your report helps keep the community safe. All submissions are strictly anonymous.
-              </p>
-              <p className="text-pink-700 text-xs md:text-sm font-semibold leading-5">
-                Your personal details and precise GPS location are hidden to protect your privacy.
-              </p>
-            </div>
+            <h2 className="text-pink-700 text-2xl font-bold mb-3">Report an Incident</h2>
+            <p className="text-pink-700 font-semibold mb-3 leading-relaxed text-sm">
+              Your report helps keep the community safe. All submissions are strictly anonymous.
+            </p>
+            <p className="text-pink-700/80 font-medium text-xs leading-relaxed">
+              Your personal details and precise GPS location are hidden to protect your privacy.
+            </p>
           </div>
 
           {/* Right Side - Form atau konfirmasi setelah terkirim */}
-          <div className="flex-1 p-6 md:p-8 overflow-y-auto">
-            {status === 'success' && submitted ? (
-              <div className="h-full flex flex-col items-center justify-center py-6">
-                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
-                  <CheckCircle2 className="w-9 h-9" strokeWidth={2.2} />
-                </div>
-
-                <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">
-                  Report Submitted!
-                </h3>
-                <p className="text-xs text-gray-500 italic mb-5 text-center">
-                  Your incident report has been anonymized and registered.
-                </p>
-
-                {/* Ringkasan agar pelapor memegang bukti bahwa laporannya
-                    tercatat, tanpa perlu membuka daftar terlebih dahulu. */}
-                <div className="w-full max-w-sm bg-neutral-100 rounded-xl p-4 mb-4">
-                  <p className="text-sm font-bold text-gray-900 mb-3">Report Summary</p>
-
-                  <dl className="space-y-2 text-xs">
-                    <div className="flex items-center justify-between gap-3">
-                      <dt className="text-gray-500">Report ID</dt>
-                      <dd className="flex items-center gap-1.5">
-                        <span className="font-bold text-pink-700">{submitted.reference}</span>
-                        <button
-                          type="button"
-                          onClick={handleCopyReference}
-                          aria-label="Copy report ID"
-                          className="text-gray-400 hover:text-pink-700 transition-colors"
-                        >
-                          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                        </button>
-                      </dd>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <dt className="text-gray-500">Status</dt>
-                      <dd>
-                        <span className="px-2 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-[10px] font-semibold">
-                          Pending Review
-                        </span>
-                      </dd>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <dt className="text-gray-500">Category</dt>
-                      <dd className="text-gray-900 font-medium text-right">
-                        {categoryLabel(submitted.category)}
-                      </dd>
-                    </div>
-
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-gray-500 shrink-0">Location</dt>
-                      <dd className="text-gray-900 font-medium text-right">{submitted.location}</dd>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <dt className="text-gray-500">Timestamp</dt>
-                      <dd className="text-gray-900 font-medium text-right">
-                        {formatTimestamp(submitted.timestamp)}
-                      </dd>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <dt className="text-gray-500">Evidence</dt>
-                      <dd className="text-gray-900 font-medium text-right">
-                        {submitted.hasEvidence ? '1 File Attached (EXIF Stripped)' : 'No file attached'}
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
-
-                <p className="text-[10px] text-gray-500 leading-relaxed max-w-sm mb-5 text-center">
-                  <strong className="text-gray-700 italic">Your privacy is protected.</strong>{' '}
-                  All personal identity and media metadata have been completely stripped to
-                  protect your privacy.
-                </p>
-
-                <div className="w-full max-w-sm border-t border-gray-200 pt-4 flex items-center justify-end gap-3">
-                  <Link
-                    href="/report"
-                    className="border border-pink-700 text-pink-700 hover:bg-pink-700/5 font-semibold py-2 px-5 rounded-xl text-sm transition-colors flex items-center gap-1.5"
-                  >
-                    <ListChecks className="w-4 h-4" />
-                    View History
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStatus('idle');
-                      setSubmitted(null);
-                    }}
-                    className="bg-pink-700 hover:bg-pink-800 text-white font-semibold py-2 px-6 rounded-xl text-sm transition-colors cursor-pointer"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            ) : (
+          <div className="p-8 md:w-7/12 flex flex-col justify-between">
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Category */}
               <div ref={categoryRef} className="relative">
@@ -393,21 +406,12 @@ export default function NewReportPage() {
                 <label className="block text-pink-700 text-lg font-semibold mb-2">
                   Timestamp*
                 </label>
-                <div
-                  onClick={() => timestampRef.current?.showPicker?.()}
-                  className="relative w-full px-4 py-2.5 bg-pink-700/5 rounded-xl border border-transparent focus-within:border-pink-700 focus-within:ring-2 focus-within:ring-pink-700/20 flex items-center gap-2 cursor-pointer transition-all"
-                >
-                  <input
-                    ref={timestampRef}
-                    type="datetime-local"
-                    name="timestamp"
-                    value={formData.timestamp}
-                    onChange={handleChange}
-                    className="w-full bg-transparent text-black text-sm font-medium focus:outline-none cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-                    required
-                  />
-                  <Calendar className="w-4 h-4 text-pink-700 shrink-0 pointer-events-none" />
-                </div>
+                <DateTimePicker
+                  value={formData.timestamp}
+                  onChange={(v) => setFormData(prev => ({ ...prev, timestamp: v }))}
+                  max={new Date()}
+                  placeholder="Select date and time"
+                />
                 {errors.timestamp && (
                   <p className="mt-1 text-xs text-red-600">{errors.timestamp}</p>
                 )}
@@ -429,9 +433,14 @@ export default function NewReportPage() {
 
               {/* Upload Evidence */}
               <div>
-                <label className="block text-pink-700 text-lg font-semibold mb-2">
+                <label className="block text-pink-700 text-lg font-semibold mb-1">
                   Upload Evidence
                 </label>
+                <p className="text-xs text-neutral-500 mb-2 leading-relaxed">
+                  Max 5MB.
+                  <br />
+                  EXIF location/metadata is automatically stripped
+                </p>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -476,9 +485,6 @@ export default function NewReportPage() {
                     )}
                   </div>
                 </div>
-                <p className="mt-2 text-xs text-neutral-500 font-normal">
-                  Max 5MB. EXIF location/metadata is automatically stripped.
-                </p>
                 {errors.evidence && (
                   <p className="mt-1 text-xs text-red-600">{errors.evidence}</p>
                 )}
@@ -494,21 +500,14 @@ export default function NewReportPage() {
                   disabled={status === 'submitting'}
                   className="w-40 h-10 bg-pink-700 rounded-xl text-white text-base font-semibold hover:bg-pink-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {status === 'submitting' ? (
-                    'SUBMITTING...'
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      SUBMIT
-                    </>
-                  )}
+                  {status === 'submitting' ? 'SUBMITTING...' : 'SUBMIT'}
                 </button>
               </div>
             </form>
-            )}
           </div>
         </div>
-      </div>
+        )}
+      </main>
     </div>
   );
 }

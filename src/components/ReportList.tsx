@@ -18,6 +18,8 @@ import {
   categoryLabel,
   categoryStyle,
   formatTimestamp,
+  STATUS_LABELS,
+  STATUS_STYLES,
   referenceCode,
   type IncidentItem,
 } from '@/lib/reports';
@@ -216,10 +218,18 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
                   <div className="flex-1 min-w-[200px]">
                     <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-2">
                       <span
-                        className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${categoryStyle(incident.category)}`}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${categoryStyle()}`}
                       >
                         <CategoryIcon className="w-3.5 h-3.5" />
                         {categoryLabel(incident.category)}
+                      </span>
+                      {/* Status belum tersimpan di basis data; selama alur
+                          peninjauan admin belum ada, semua laporan memang
+                          berstatus menunggu. */}
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_STYLES.pending}`}
+                      >
+                        {STATUS_LABELS.pending}
                       </span>
                       <span className="text-neutral-500 text-xs font-medium flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5" />

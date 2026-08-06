@@ -41,13 +41,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'evidence must be PNG, JPG, or MP4' }, { status: 400 });
     }
 
-    const blob = await put(`evidence/${evidence.name}`, evidence, {
-      access: 'public',
-      addRandomSuffix: true,
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-    });
-
-    evidenceUrl = blob.url;
+    // Kegagalan unggah tidak boleh muncul sebagai 500 tanpa penjelasan.
+    // Penyebab paling sering adalah BLOB_READ_WRITE_TOKEN yang belum diisi
+    // atau sudah kedaluwarsa, dan pelapor perlu tahu bahwa laporannya bisa
+    // tetap dikirim tanpa lampiran.
+    try {
+      const blob = await put(`evidence/${evidence.name}`, evidence, {
+        access: 'public',
+        addRandomSuffix: true,
+        token: process.env.BLOB_READ_WRITE_TOKEN,
+      });
+      evidenceUrl = blob.url;
+    } catch (err) {
+      console.error('[reports] gagal mengunggah bukti:', String(err));
+      return NextResponse.json(
+        {
+          error:
+            'Could not upload the attached file. Please try again, or submit the report without evidence.',
+        },
+        { status: 502 }
+      );
+    }
   }
 
   const incident = await prisma.incident.create({

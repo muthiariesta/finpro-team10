@@ -30,18 +30,30 @@ export default async function ReportListPage() {
   }));
 
   return (
-    <div className="w-full min-h-screen bg-[#FAFAFA] pt-[72px]">
-      {/* Navbar dipasang per halaman, mengikuti pola halaman lain di main. */}
+    <div className="min-h-screen bg-[#F8F9FA] text-gray-900 font-sans flex flex-col">
+      {/* Header disamakan dengan halaman Emergency agar seragam */}
       <header className="fixed top-0 left-0 right-0 h-[72px] z-50 bg-white border-b border-gray-200">
         <Navbar />
       </header>
 
-      <div className="max-w-5xl mx-auto py-6 px-6 md:px-20">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-          <h1 className="text-pink-700 text-xl md:text-2xl font-semibold">Incident Reports</h1>
+      <main className="max-w-6xl mx-auto w-full pt-[96px] pb-12 px-6 flex-1">
+        {/* Banner header mengikuti pola halaman Emergency agar seragam */}
+        <div className="bg-white border border-gray-200/80 rounded-2xl p-6 mb-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <span className="inline-block text-[10px] font-extrabold text-[#D91176] bg-pink-50 px-3 py-1 rounded-full uppercase tracking-wider mb-2 border border-pink-100">
+              COMMUNITY SAFETY LOG
+            </span>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight mb-1">
+              Incident Reports
+            </h1>
+            <p className="text-xs font-medium text-gray-500">
+              Reports are submitted anonymously and help other women assess an area before travelling.
+            </p>
+          </div>
+
           <Link
             href="/report/new"
-            className="px-5 py-2 bg-pink-700 rounded-xl text-white text-sm font-semibold hover:bg-pink-800 transition-colors flex items-center gap-1.5"
+            className="bg-[#D91176] hover:bg-[#b80d63] text-white font-bold py-2.5 px-5 rounded-xl text-xs tracking-wide transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-sm self-start md:self-auto"
           >
             <Plus className="w-4 h-4" />
             Add Report
@@ -49,7 +61,7 @@ export default async function ReportListPage() {
         </div>
 
         <ReportList incidents={items} />
-      </div>
+      </main>
     </div>
   );
 }
