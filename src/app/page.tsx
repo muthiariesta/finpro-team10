@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import { Info, Loader2, Map, TriangleAlert } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import {
@@ -11,6 +12,7 @@ import {
   type LatLng,
   type RouteRisk,
 } from '../lib/riskApi';
+import { saveTripPlan } from '../lib/trip';
 import {
   fetchSafePoints,
   formatDistance,
@@ -50,6 +52,7 @@ async function geocode(query: string): Promise<LatLng | null> {
 }
 
 export default function SafeRoutePage() {
+  const router = useRouter();
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [routeRisk, setRouteRisk] = useState<RouteRisk | null>(null);
@@ -159,6 +162,27 @@ export default function SafeRoutePage() {
 
     setHasSearched(true);
     setIsLoading(false);
+  };
+
+  /**
+   * Meneruskan rute terpilih ke In-Trip Protection.
+   *
+   * Rencana perjalanan dititipkan lewat sessionStorage, bukan query string,
+   * karena geometri jalan bisa ratusan titik dan tidak muat di URL.
+   */
+  const startNavigation = () => {
+    saveTripPlan({
+      originLabel: originText,
+      destinationLabel: destinationText,
+      originCoords,
+      destCoords,
+      routePath: routePath.length > 1 ? routePath : [originCoords, destCoords],
+      durationMin: routeInfo?.durationMin ?? 10,
+      distanceKm: routeInfo?.distanceKm ?? '',
+      riskSegments: routeRisk?.segments ?? [],
+      safePoints,
+    });
+    router.push('/in-trip');
   };
 
   return (
@@ -349,7 +373,7 @@ export default function SafeRoutePage() {
                           </p>
                         </div>
 
-                        <button className="w-full bg-gray-700 hover:bg-gray-800 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer">
+                        <button onClick={startNavigation} className="w-full bg-gray-700 hover:bg-gray-800 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer">
                           START NAVIGATION
                         </button>
                       </div>
@@ -427,7 +451,7 @@ export default function SafeRoutePage() {
                         </p>
                       </div>
 
-                      <button className={`w-full ${btnBg} text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer`}>
+                      <button onClick={startNavigation} className={`w-full ${btnBg} text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer`}>
                         START NAVIGATION
                       </button>
                     </div>
@@ -506,7 +530,7 @@ export default function SafeRoutePage() {
                       Shorter route through narrower &amp; quieter streets. Its risk level has not been assessed.
                     </p>
                   </div>
-                  <button className="w-full bg-[#D91176] hover:bg-[#b80d63] text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer">
+                  <button onClick={startNavigation} className="w-full bg-[#D91176] hover:bg-[#b80d63] text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer">
                     START NAVIGATION
                   </button>
                 </div>

@@ -43,3 +43,12 @@ body {
 .animate-blink {
   animation: blink-caret 0.9s step-end infinite;
 }
+
+/* Denyut penanda posisi pengguna pada peta In-Trip Protection.
+   Didefinisikan global karena penandanya dibuat lewat HTML mentah
+   Leaflet (divIcon), yang tidak tersentuh kelas Tailwind. */
+@keyframes safeher-ping {
+  0% { transform: scale(0.6); opacity: 0.5; }
+  70% { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
