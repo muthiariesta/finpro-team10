@@ -1,24 +1,31 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { resolveOwnerScope } from '@/lib/ownerScope';
 
 /**
- * Kontak darurat milik satu perangkat.
+ * Kontak darurat milik seorang pengguna.
  *
- * Tidak ada akun pengguna, jadi kepemilikan ditandai ownerToken dari
- * localStorage - pola yang sama dengan laporan anonim. Tanpa penyaringan itu,
- * nomor telepon orang terdekat akan terbaca oleh siapa pun yang membuka
- * aplikasi.
+ * Kepemilikan mengikuti akun bila pengguna sudah masuk, dan jatuh ke token
+ * perangkat bila belum. Sebelumnya hanya token perangkat yang dipakai, dan
+ * kontaknya lenyap begitu peramban berganti - kegagalan serius pada aplikasi
+ * keselamatan, karena kontak darurat justru dibutuhkan di situasi tak biasa.
  */
 
 export async function GET(request: Request) {
-  const ownerToken = new URL(request.url).searchParams.get('ownerToken');
+  const fallback = new URL(request.url).searchParams.get('ownerToken');
+  const scope = await resolveOwnerScope(fallback);
 
-  if (!ownerToken) {
+  if (!scope) {
     return NextResponse.json({ error: 'ownerToken is required' }, { status: 400 });
   }
 
+  // Data lama tersimpan dengan token perangkat, data baru dengan penanda
+  // akun. Keduanya dibaca agar kontak yang sudah ada tidak hilang setelah
+  // pengguna mulai memakai akun.
+  const owners = fallback && fallback !== scope ? [scope, fallback] : [scope];
+
   const guardians = await prisma.guardian.findMany({
-    where: { ownerToken },
+    where: { ownerToken: { in: owners } },
     orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
     select: {
       id: true,
@@ -35,7 +42,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
-  const { ownerToken, name, role, phone, isPrimary, channels } = body;
+  const { name, role, phone, isPrimary, channels } = body;
+  const ownerToken = await resolveOwnerScope(body.ownerToken);
 
   if (!ownerToken) {
     return NextResponse.json({ error: 'ownerToken is required' }, { status: 400 });

@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { resolveOwnerScope } from '@/lib/ownerScope';
 
 /** Menghapus kontak darurat; hanya perangkat pemiliknya yang boleh. */
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
-  const { ownerToken } = body;
+  const ownerToken = await resolveOwnerScope(body.ownerToken);
 
   if (!ownerToken) {
     return NextResponse.json({ error: 'ownerToken is required' }, { status: 400 });
@@ -17,7 +18,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'contact not found' }, { status: 404 });
   }
 
-  if (guardian.ownerToken !== ownerToken) {
+  const owners = [ownerToken, body.ownerToken].filter(Boolean);
+  if (!owners.includes(guardian.ownerToken)) {
     return NextResponse.json(
       { error: 'not authorized to delete this contact' },
       { status: 403 }

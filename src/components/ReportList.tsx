@@ -62,7 +62,44 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
    * tersedia saat render di server, pembacaannya ditunda ke useEffect.
    */
   useEffect(() => {
-    setMyReports(JSON.parse(localStorage.getItem('my-reports') || '{}'));
+    const owned: Record<string, string> = JSON.parse(
+      localStorage.getItem('my-reports') || '{}'
+    );
+    setMyReports(owned);
+
+    const tokens = Object.values(owned);
+    if (tokens.length === 0) return;
+
+    /**
+     * Daftar publik hanya memuat laporan yang sudah diverifikasi, sehingga
+     * laporan sendiri yang masih menunggu tidak ikut terbawa. Laporan itu
+     * diambil terpisah dan digabungkan, supaya pelapor tetap bisa memantau
+     * miliknya - keluhan terbesar pada riset pengguna adalah laporan terasa
+     * hilang begitu dikirim.
+     */
+    fetch('/api/reports/mine', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tokens }),
+    })
+      .then((res) => (res.ok ? res.json() : { reports: [] }))
+      .then((data: { reports?: IncidentItem[] }) => {
+        const mine = data.reports ?? [];
+        if (mine.length === 0) return;
+
+        setItems((prev) => {
+          const seen = new Set(prev.map((i) => i.id));
+          // Hanya yang belum ada yang ditambahkan; laporan sendiri yang
+          // sudah terverifikasi tentu sudah termuat dari daftar publik.
+          return [...prev, ...mine.filter((m) => !seen.has(m.id))].sort(
+            (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)
+          );
+        });
+      })
+      .catch(() => {
+        // Kegagalan di sini tidak boleh mengosongkan daftar publik yang
+        // sudah tampil; cukup laporan sendiri yang tidak ikut muncul.
+      });
   }, []);
 
   const mineCount = useMemo(
