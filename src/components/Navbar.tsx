@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { FileText, Menu, MessageSquare, Navigation, Phone, Wifi, X } from 'lucide-react';
 import { useAlertChannel } from '@/lib/channel';
 import SosButton from './SosButton';
+import UserMenu from './UserMenu';
 
 /**
  * Navbar aplikasi.
@@ -170,6 +171,10 @@ export const Navbar: React.FC = () => {
 
         <SosButton />
 
+        <span className="hidden sm:block">
+          <UserMenu />
+        </span>
+
         <button
           type="button"
           onClick={() => setMenuOpen((p) => !p)}
@@ -209,6 +214,10 @@ export const Navbar: React.FC = () => {
                   </Link>
                 );
               })}
+
+              <div className="border-t border-gray-100 mt-2 pt-2">
+                <UserMenu drawer />
+              </div>
             </div>
           </div>
         </>
