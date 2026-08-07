@@ -45,7 +45,20 @@ model Incident {
   location    String
   timestamp   DateTime
   description String?
+  /// Lampiran pertama. Dipertahankan supaya laporan lama tetap terbaca;
+  /// laporan baru mengisi evidenceUrls dan menyalin yang pertama ke sini.
   evidenceUrl String?
+  /// Semua lampiran. Satu kejadian sering perlu beberapa foto - wajah
+  /// pelaku, pelat nomor, dan keadaan sekitar jarang muat dalam satu bingkai.
+  evidenceUrls String[] @default([])
+  /// Koordinat kejadian bila pelapor bersedia menyertakannya. Opsional:
+  /// memaksakannya akan menghalangi orang yang justru paling perlu melapor.
+  lat            Float?
+  lon            Float?
+  /// "gps" | "map" | "manual". Admin perlu tahu asal koordinatnya sebelum
+  /// memercayainya - titik GPS dan titik yang ditaruh dengan tangan punya
+  /// tingkat ketelitian yang jauh berbeda.
+  locationSource String?
   ownerToken  String
   status      ReportStatus @default(PENDING)
   /// Tanggapan admin yang terlihat oleh pelapor; menjawab keluhan riset

@@ -24,6 +24,7 @@ export default async function AdminReportsPage() {
       timestamp: true,
       description: true,
       evidenceUrl: true,
+      evidenceUrls: true,
       status: true,
       createdAt: true,
     },

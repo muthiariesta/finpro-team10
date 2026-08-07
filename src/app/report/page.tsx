@@ -24,6 +24,7 @@ export default async function ReportListPage() {
       createdAt: true,
       description: true,
       evidenceUrl: true,
+      evidenceUrls: true,
       status: true,
       adminNote: true,
     },

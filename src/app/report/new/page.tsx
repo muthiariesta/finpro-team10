@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import type { PickedLocation } from '@/components/IncidentLocationPicker';
 import { Navbar } from '@/components/Navbar';
 import {
   Check,
@@ -10,7 +12,6 @@ import {
   Copy,
   Film,
   ListChecks,
-  MapPin,
   UploadCloud,
   X,
 } from 'lucide-react';
@@ -19,6 +20,22 @@ import { CATEGORIES, categoryLabel, formatTimestamp, referenceCode } from '@/lib
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'video/mp4'];
+/** Harus sama dengan MAX_FILES di src/app/api/reports/route.ts. */
+const MAX_FILES = 5;
+
+/**
+ * Peta memuat Leaflet, yang menyentuh `window` saat diimpor. Dimuat hanya
+ * di peramban supaya render di server tidak gagal.
+ */
+const IncidentLocationPicker = dynamic(
+  () => import('@/components/IncidentLocationPicker'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-10 rounded-xl bg-neutral-100 animate-pulse" />
+    ),
+  }
+);
 
 /** Ringkasan laporan yang baru terkirim, untuk ditampilkan di layar konfirmasi. */
 interface SubmittedSummary {
@@ -26,7 +43,7 @@ interface SubmittedSummary {
   category: string;
   location: string;
   timestamp: string;
-  hasEvidence: boolean;
+  evidenceCount: number;
 }
 
 /** Kartu ringkasan laporan pada layar konfirmasi. */
@@ -90,7 +107,9 @@ function SubmittedSummaryCard({
         <div className="flex items-center justify-between gap-3">
           <dt className="text-gray-500">Evidence</dt>
           <dd className="text-gray-900 font-medium text-right">
-            {summary.hasEvidence ? '1 File Attached (EXIF Stripped)' : 'No file attached'}
+            {summary.evidenceCount > 0
+              ? `${summary.evidenceCount} file${summary.evidenceCount === 1 ? '' : 's'} attached (EXIF stripped)`
+              : 'No file attached'}
           </dd>
         </div>
       </dl>
@@ -98,15 +117,71 @@ function SubmittedSummaryCard({
   );
 }
 
+/**
+ * Pratinjau satu lampiran.
+ *
+ * Pratinjaunya nyata, bukan sekadar nama berkas: dengan beberapa foto
+ * sekaligus, nama seperti IMG_2381.jpg tidak memberi tahu apa pun tentang
+ * mana yang hendak dihapus.
+ */
+function EvidenceThumb({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const isImage = file.type.startsWith('image/');
+
+  // Dibuat saat render, bukan di dalam effect. Membuatnya di effect lalu
+  // menyimpannya lewat setState memaksa satu render tambahan dengan
+  // pratinjau kosong, dan gambar terlihat berkedip saat muncul.
+  const url = useMemo(
+    () => (isImage ? URL.createObjectURL(file) : null),
+    [file, isImage]
+  );
+
+  // Object URL menahan berkasnya di memori sampai dilepas; tanpa ini,
+  // memilih lalu menghapus foto berulang kali membuat tab membengkak.
+  useEffect(() => {
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [url]);
+
+  return (
+    <li className="relative aspect-square rounded-lg overflow-hidden border border-neutral-200 bg-neutral-50">
+      {isImage && url ? (
+        <img src={url} alt={file.name} className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-2">
+          <Film className="w-6 h-6 text-pink-700" />
+          <span className="text-[9px] text-neutral-600 text-center line-clamp-2 break-all">
+            {file.name}
+          </span>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove ${file.name}`}
+        className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full bg-white/90 text-neutral-600 hover:bg-red-100 hover:text-red-600 shadow-sm transition-colors"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </li>
+  );
+}
+
 export default function NewReportPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     category: '',
-    location: '',
     timestamp: '',
     description: '',
   });
-  const [evidence, setEvidence] = useState<File | null>(null);
+  const [place, setPlace] = useState<PickedLocation>({
+    label: '',
+    lat: null,
+    lon: null,
+    source: 'manual',
+  });
+  const [evidence, setEvidence] = useState<File[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -140,36 +215,55 @@ export default function NewReportPage() {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0] ?? null;
-    if (!selected) {
-      setEvidence(null);
-      return;
+    const picked = Array.from(e.target.files ?? []);
+    // Input direset agar memilih berkas yang sama dua kali tetap memicu
+    // change - jika tidak, menghapus lalu memilih ulang terasa rusak.
+    e.target.value = '';
+    if (picked.length === 0) return;
+
+    const rejected: string[] = [];
+    const accepted: File[] = [];
+
+    for (const file of picked) {
+      if (file.size > MAX_FILE_SIZE) {
+        rejected.push(`${file.name} is larger than 5MB`);
+      } else if (!ALLOWED_TYPES.includes(file.type)) {
+        rejected.push(`${file.name} is not a PNG, JPG, or MP4`);
+      } else {
+        accepted.push(file);
+      }
     }
 
-    if (selected.size > MAX_FILE_SIZE) {
-      setErrors(prev => ({ ...prev, evidence: 'File must be 5MB or smaller' }));
-      setEvidence(null);
-      e.target.value = '';
-      return;
-    }
-    if (!ALLOWED_TYPES.includes(selected.type)) {
-      setErrors(prev => ({ ...prev, evidence: 'Only PNG, JPG, or MP4 files are allowed' }));
-      setEvidence(null);
-      e.target.value = '';
-      return;
-    }
-
-    setErrors(prev => {
-      const { evidence: _removed, ...rest } = prev;
-      return rest;
+    // Berkas yang sudah dipilih ditambah, bukan diganti: orang biasanya
+    // memilih foto beberapa kali dari album yang berbeda.
+    setEvidence((prev) => {
+      const merged = [...prev];
+      for (const file of accepted) {
+        const duplicate = merged.some(
+          (f) => f.name === file.name && f.size === file.size
+        );
+        if (!duplicate && merged.length < MAX_FILES) merged.push(file);
+      }
+      if (merged.length >= MAX_FILES && prev.length + accepted.length > MAX_FILES) {
+        rejected.push(`Only ${MAX_FILES} files can be attached`);
+      }
+      return merged;
     });
-    setEvidence(selected);
+
+    setErrors((prev) => {
+      const { evidence: _removed, ...rest } = prev;
+      return rejected.length > 0 ? { ...rest, evidence: rejected.join('. ') } : rest;
+    });
+  };
+
+  const removeFile = (index: number) => {
+    setEvidence((prev) => prev.filter((_, i) => i !== index));
   };
 
   const validate = () => {
     const nextErrors: Record<string, string> = {};
     if (!formData.category) nextErrors.category = 'Category is required';
-    if (!formData.location.trim()) nextErrors.location = 'Location is required';
+    if (!place.label.trim()) nextErrors.location = 'Location is required';
     if (!formData.timestamp) nextErrors.timestamp = 'Timestamp is required';
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -188,11 +282,18 @@ export default function NewReportPage() {
 
       const payload = new FormData();
       payload.append('category', formData.category);
-      payload.append('location', formData.location);
+      payload.append('location', place.label);
       payload.append('timestamp', formData.timestamp);
       payload.append('description', formData.description);
       payload.append('ownerToken', ownerToken);
-      if (evidence) payload.append('evidence', evidence);
+      if (place.lat !== null && place.lon !== null) {
+        payload.append('lat', String(place.lat));
+        payload.append('lon', String(place.lon));
+        payload.append('locationSource', place.source);
+      }
+      // Nama field diulang, satu per berkas; sisi server membacanya
+      // dengan formData.getAll('evidence').
+      for (const file of evidence) payload.append('evidence', file);
 
       const res = await fetch('/api/reports', {
         method: 'POST',
@@ -214,13 +315,14 @@ export default function NewReportPage() {
         category: created.category,
         location: created.location,
         timestamp: created.timestamp,
-        hasEvidence: Boolean(created.evidenceUrl),
+        evidenceCount: created.evidenceUrls?.length ?? (created.evidenceUrl ? 1 : 0),
       });
 
       setStatus('success');
       setCopied(false);
-      setFormData({ category: '', location: '', timestamp: '', description: '' });
-      setEvidence(null);
+      setFormData({ category: '', timestamp: '', description: '' });
+      setPlace({ label: '', lat: null, lon: null, source: 'manual' });
+      setEvidence([]);
       if (fileInputRef.current) fileInputRef.current.value = '';
       setErrors({});
 
@@ -384,18 +486,7 @@ export default function NewReportPage() {
                 <label className="block text-pink-700 text-lg font-semibold mb-2">
                   Location*
                 </label>
-                <div className="w-full px-4 py-2.5 bg-pink-700/5 rounded-xl border border-transparent focus-within:border-pink-700 focus-within:ring-2 focus-within:ring-pink-700/20 flex items-center gap-2 transition-all">
-                  <input
-                    type="text"
-                    name="location"
-                    value={formData.location}
-                    onChange={handleChange}
-                    placeholder="e.g. Near Ayodya Park, Kebayoran Baru"
-                    className="w-full bg-transparent text-black text-sm font-medium placeholder:text-neutral-500 focus:outline-none"
-                    required
-                  />
-                  <MapPin className="w-4 h-4 text-pink-700 shrink-0" />
-                </div>
+                <IncidentLocationPicker value={place} onChange={setPlace} />
                 {errors.location && (
                   <p className="mt-1 text-xs text-red-600">{errors.location}</p>
                 )}
@@ -403,9 +494,30 @@ export default function NewReportPage() {
 
               {/* Timestamp */}
               <div>
-                <label className="block text-pink-700 text-lg font-semibold mb-2">
-                  Timestamp*
-                </label>
+                <div className="flex items-baseline justify-between mb-2 gap-3">
+                  <label className="block text-pink-700 text-lg font-semibold">
+                    Timestamp*
+                  </label>
+                  {/* Jam perangkat, sama seperti jam yang menyertai GPS.
+                      Waktu kejadian tetap bisa diubah, karena laporan sering
+                      ditulis beberapa saat setelah kejadiannya. */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const now = new Date();
+                      const pad = (n: number) => String(n).padStart(2, '0');
+                      setFormData((prev) => ({
+                        ...prev,
+                        timestamp:
+                          `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+                          `T${pad(now.getHours())}:${pad(now.getMinutes())}`,
+                      }));
+                    }}
+                    className="text-xs font-semibold text-pink-700 hover:underline shrink-0"
+                  >
+                    Use current time
+                  </button>
+                </div>
                 <DateTimePicker
                   value={formData.timestamp}
                   onChange={(v) => setFormData(prev => ({ ...prev, timestamp: v }))}
@@ -437,7 +549,7 @@ export default function NewReportPage() {
                   Upload Evidence
                 </label>
                 <p className="text-xs text-neutral-500 mb-2 leading-relaxed">
-                  Max 5MB.
+                  Up to {MAX_FILES} files, max 5MB each.
                   <br />
                   EXIF location/metadata is automatically stripped
                 </p>
@@ -446,45 +558,45 @@ export default function NewReportPage() {
                   type="file"
                   name="evidence"
                   accept="image/png,image/jpeg,video/mp4"
+                  multiple
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <div
-                  onClick={() => !evidence && fileInputRef.current?.click()}
-                  className={`relative w-full h-44 px-5 py-6 bg-white rounded-xl border border-dashed flex flex-col items-center justify-center gap-3 transition-all ${
-                    evidence ? 'border-pink-700 bg-pink-700/5' : 'border-neutral-300 cursor-pointer hover:border-pink-700 hover:bg-pink-700/5'
-                  }`}
-                >
-                  {evidence && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEvidence(null);
-                        if (fileInputRef.current) fileInputRef.current.value = '';
-                      }}
-                      aria-label="Remove uploaded file"
-                      className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-neutral-200 text-neutral-600 hover:bg-red-100 hover:text-red-600 transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                  {evidence ? (
-                    <Film className="w-10 h-10 text-pink-700" />
-                  ) : (
-                    <UploadCloud className="w-10 h-10 text-neutral-400" />
-                  )}
-                  <div className="text-center">
-                    {evidence ? (
-                      <p className="text-neutral-700 text-sm font-medium">{evidence.name}</p>
-                    ) : (
-                      <>
-                        <p className="text-neutral-500 text-sm font-medium">Upload Photo / Video</p>
-                        <p className="text-neutral-400 text-xs">Drag & drop or browse (PNG, JPG, MP4)</p>
-                      </>
-                    )}
+
+                {evidence.length > 0 && (
+                  <ul className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
+                    {evidence.map((file, i) => (
+                      <EvidenceThumb
+                        key={`${file.name}-${file.size}-${i}`}
+                        file={file}
+                        onRemove={() => removeFile(i)}
+                      />
+                    ))}
+                  </ul>
+                )}
+
+                {evidence.length < MAX_FILES && (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`relative w-full px-5 bg-white rounded-xl border border-dashed border-neutral-300 cursor-pointer hover:border-pink-700 hover:bg-pink-700/5 flex flex-col items-center justify-center gap-3 transition-all ${
+                      evidence.length > 0 ? 'py-4' : 'h-44 py-6'
+                    }`}
+                  >
+                    <UploadCloud
+                      className={evidence.length > 0 ? 'w-6 h-6 text-neutral-400' : 'w-10 h-10 text-neutral-400'}
+                    />
+                    <div className="text-center">
+                      <p className="text-neutral-500 text-sm font-medium">
+                        {evidence.length > 0 ? 'Add another file' : 'Upload Photo / Video'}
+                      </p>
+                      <p className="text-neutral-400 text-xs">
+                        {evidence.length > 0
+                          ? `${MAX_FILES - evidence.length} more allowed`
+                          : 'Drag & drop or browse (PNG, JPG, MP4)'}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )}
                 {errors.evidence && (
                   <p className="mt-1 text-xs text-red-600">{errors.evidence}</p>
                 )}

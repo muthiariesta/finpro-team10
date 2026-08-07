@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { CircleCheck, CircleX, Loader2 } from 'lucide-react';
 import { AdminTable } from './AdminCard';
-import { categoryLabel, formatTimestamp, referenceCode } from '@/lib/reports';
+import { attachmentsOf, categoryLabel, formatTimestamp, referenceCode } from '@/lib/reports';
 
 interface QueueItem {
   id: string;
@@ -12,6 +12,7 @@ interface QueueItem {
   timestamp: string;
   description: string | null;
   evidenceUrl: string | null;
+  evidenceUrls: string[];
   createdAt: string;
 }
 
@@ -75,16 +76,21 @@ export default function ReviewQueue({ initial }: { initial: QueueItem[] }) {
               {r.description && (
                 <p className="text-xs text-gray-600 mt-1 leading-snug">{r.description}</p>
               )}
-              {r.evidenceUrl && (
-                <a
-                  href={r.evidenceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-block text-xs font-bold text-[#D91176] hover:underline mt-1.5"
-                >
-                  View attached evidence
-                </a>
-              )}
+              {/* Semua lampiran perlu terlihat: keputusan verifikasi tidak
+                  boleh diambil dari sebagian bukti saja. */}
+              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
+                {attachmentsOf(r).map((url, i, all) => (
+                  <a
+                    key={url}
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-bold text-[#D91176] hover:underline"
+                  >
+                    {all.length === 1 ? 'View attached evidence' : `Evidence ${i + 1}`}
+                  </a>
+                ))}
+              </div>
             </td>
             <td className="px-4 py-4">
               <span className="inline-block text-[11px] font-bold text-gray-600 border border-gray-300 bg-gray-50 rounded-full px-3 py-1 whitespace-nowrap">

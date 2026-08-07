@@ -18,6 +18,7 @@ import { saveTripPlan } from '../lib/trip';
 import {
   fetchSafePoints,
   formatDistance,
+  openStateAt,
   sortByDistanceTo,
   SAFE_POINT_ICONS,
   SAFE_POINT_LABELS,
@@ -47,6 +48,52 @@ const RISK_SAMPLE_COUNT_MULTI = 4;
 
 /** Banyaknya rute yang diminta ke OSRM, termasuk rute utama. */
 const MAX_ROUTES = 3;
+
+/**
+ * Pilihan jam keberangkatan.
+ *
+ * Sengaja mencakup siang, bukan malam saja. Model menyaring riwayat
+ * kejahatan per (hari, jam) sebelum memprediksi, jadi jam benar-benar
+ * mengubah hasilnya - tetapi kalau semua pilihan berada di rentang malam,
+ * perbedaan itu tidak akan pernah terlihat oleh pengguna.
+ */
+const DEPARTURE_OPTIONS = [
+  { value: '06:00', label: '06:00 - early morning' },
+  { value: '08:00', label: '08:00 - morning commute' },
+  { value: '12:00', label: '12:00 - midday' },
+  { value: '15:00', label: '15:00 - afternoon' },
+  { value: '18:00', label: '18:00 - evening commute' },
+  { value: '21:30', label: '21:30 - late evening' },
+  { value: '23:00', label: '23:00 - night' },
+  { value: '02:00', label: '02:00 - after midnight' },
+];
+
+/** Jam yang dianggap larut; dipakai untuk catatan waktu, bukan untuk skor. */
+function isLateHour(hhmm: string): boolean {
+  const hour = Number(hhmm.split(':')[0]);
+  return hour >= 21 || hour < 5;
+}
+
+/**
+ * Perkiraan jam tiba = jam berangkat + lama perjalanan menurut OSRM.
+ *
+ * Bukan tebakan: durasinya berasal dari perhitungan OSRM atas geometri
+ * jalan yang sama dengan yang digambar di peta. Yang tidak diperhitungkan
+ * hanyalah kemacetan waktu nyata, karena server OSRM publik tidak
+ * menyediakannya - jadi angka ini adalah kondisi jalan lengang.
+ */
+function arrivalTime(departure: string, durationMin: number): Date {
+  const [h = 0, m = 0] = departure.split(':').map(Number);
+  const at = new Date();
+  at.setHours(h, m, 0, 0);
+  at.setMinutes(at.getMinutes() + durationMin);
+  return at;
+}
+
+function formatClock(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 /** Satu pilihan rute yang benar-benar berasal dari OSRM. */
 interface RouteOption {
@@ -106,11 +153,6 @@ export default function SafeRoutePage() {
    */
   const [safePointsByRoute, setSafePointsByRoute] = useState<Record<number, SafePoint[]>>({});
 
-  const selected = routes.find((r) => r.id === selectedId) ?? routes[0] ?? null;
-  const routePath = selected?.path ?? [];
-  const routeRisk = selected?.risk ?? null;
-  const safePoints = safePointsByRoute[selected?.id ?? -1] ?? [];
-
   // State Input Form
   const [originText, setOriginText] = useState('The Loop, Chicago');
   const [destinationText, setDestinationText] = useState('West Garfield Park, Chicago');
@@ -118,6 +160,31 @@ export default function SafeRoutePage() {
   /** Koordinat dari saran yang dipilih; menghindari geocoding ulang. */
   const [pickedOrigin, setPickedOrigin] = useState<LatLng | null>(null);
   const [pickedDest, setPickedDest] = useState<LatLng | null>(null);
+
+  const selected = routes.find((r) => r.id === selectedId) ?? routes[0] ?? null;
+  const routePath = selected?.path ?? [];
+  const routeRisk = selected?.risk ?? null;
+  const rawSafePoints = safePointsByRoute[selected?.id ?? -1] ?? [];
+
+  /**
+   * Perkiraan tiba, dari lama perjalanan OSRM untuk rute yang dipilih.
+   * Berubah sendiri ketika pengguna berpindah rute - rute yang lebih jauh
+   * berarti tiba lebih malam, dan tempat yang masih buka pun berbeda.
+   */
+  const arrivesAt = selected ? arrivalTime(departureTime, selected.durationMin) : null;
+
+  /**
+   * Tempat aman diurutkan menurut apakah ia masih buka saat kita tiba,
+   * baru kemudian menurut jarak. Pos polisi 200 m yang sudah tutup tidak
+   * lebih berguna daripada apotek 24 jam berjarak 600 m.
+   */
+  const ORDER = { open: 0, unknown: 1, closed: 2 } as const;
+  const safePoints = arrivesAt
+    ? [...rawSafePoints].sort((a, b) => {
+        const d = ORDER[openStateAt(a, arrivesAt)] - ORDER[openStateAt(b, arrivesAt)];
+        return d !== 0 ? d : (a.distanceM ?? 0) - (b.distanceM ?? 0);
+      })
+    : rawSafePoints;
 
   // Fungsi Fetch ke Nominatim, OSRM, & RiskScore API
   const handleFindRoutes = async (e: React.FormEvent) => {
@@ -370,9 +437,11 @@ export default function SafeRoutePage() {
                   onChange={(e) => setDepartureTime(e.target.value)}
                   className="w-full text-sm font-semibold text-gray-800 bg-transparent outline-none cursor-pointer appearance-none"
                 >
-                  <option value="21:30">Departure Time: Leave Now (21:30)</option>
-                  <option value="22:00">Departure Time: 22:00</option>
-                  <option value="23:00">Departure Time: 23:00</option>
+                  {DEPARTURE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      Departure Time: {opt.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -417,18 +486,48 @@ export default function SafeRoutePage() {
             {hasSearched && !routeError && (
               <div className="flex flex-col gap-3.5 animate-fadeIn">
                 
-                {/* A. TIME RISK WARNING CARD */}
-                <div className="bg-[#FFF4D3] border border-[#F5E0A3] rounded-xl p-3.5 flex gap-2.5 items-start">
-                  <TriangleAlert className="w-4 h-4 text-black mt-0.5 shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-black tracking-wide text-black uppercase mb-1">
-                      TIME RISK WARNING
-                    </h4>
-                    <p className="text-[11px] text-gray-800 font-medium leading-snug">
-                      Risk level for this route is higher after 21:00 on weekends. Consider leaving earlier or choosing an alternative route.
-                    </p>
-                  </div>
-                </div>
+                {/* A. TIME RISK WARNING
+                    Dulu kartu ini berisi kalimat tetap ("higher after 21:00 on
+                    weekends") yang muncul untuk rute apa pun, jam berapa pun -
+                    termasuk saat rutenya sama sekali belum dinilai. Sekarang
+                    isinya mengikuti hasil penilaian, dan bila tidak ada yang
+                    perlu diperingatkan, kartunya tidak muncul. */}
+                {(() => {
+                  const overall = selected?.risk?.overall;
+                  const scored = overall?.status === 'ok';
+                  const risky = scored && overall.level !== 'Low';
+                  const late = isLateHour(departureTime);
+
+                  if (!risky && !late) return null;
+
+                  return (
+                    <div className="bg-[#FFF4D3] border border-[#F5E0A3] rounded-xl p-3.5 flex gap-2.5 items-start">
+                      <TriangleAlert className="w-4 h-4 text-black mt-0.5 shrink-0" />
+                      <div>
+                        <h4 className="text-xs font-black tracking-wide text-black uppercase mb-1">
+                          {risky ? 'TIME RISK WARNING' : 'LATE DEPARTURE'}
+                        </h4>
+                        <p className="text-[11px] text-gray-800 font-medium leading-snug">
+                          {risky ? (
+                            <>
+                              Leaving at {departureTime}, the riskiest point on this
+                              route scores <strong>{Math.round(overall.score)}</strong>{' '}
+                              ({overall.level}). Scores are calculated for this exact
+                              hour and day, so departing at a different time may
+                              change the result - try another departure time above.
+                            </>
+                          ) : (
+                            <>
+                              You are departing at {departureTime}. Fewer places stay
+                              open and streets are quieter at this hour, so share your
+                              trip with a guardian before you start.
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* B. DAFTAR RUTE - satu kartu per rute nyata dari OSRM */}
                 {routes.length > 1 && (
@@ -628,6 +727,16 @@ export default function SafeRoutePage() {
                     )}
                   </div>
 
+                  {/* Jam tiba, bukan jam berangkat. Tempat yang buka saat
+                      kita berangkat tidak menolong kalau sudah tutup ketika
+                      kita sampai. */}
+                  {arrivesAt && safePoints.length > 0 && (
+                    <p className="text-[10px] text-gray-500 mb-2 -mt-1">
+                      Checked against your estimated arrival at{' '}
+                      <strong>{formatClock(arrivesAt)}</strong> ({selected?.durationMin} min drive)
+                    </p>
+                  )}
+
                   {safePoints.length === 0 ? (
                     <p className="text-[11px] text-gray-500 leading-snug">
                       No safe points were detected along this route.
@@ -635,8 +744,9 @@ export default function SafeRoutePage() {
                   ) : (
                     <>
                       <ul className="flex flex-col gap-1.5">
-                        {safePoints.slice(0, 4).map((point) => {
+                        {safePoints.slice(0, 5).map((point) => {
                           const PointIcon = SAFE_POINT_ICONS[point.type];
+                          const state = arrivesAt ? openStateAt(point, arrivesAt) : 'unknown';
                           return (
                           <li key={point.id} className="flex items-start gap-2">
                             <PointIcon className="w-4 h-4 text-gray-700 mt-0.5 shrink-0" />
@@ -656,18 +766,34 @@ export default function SafeRoutePage() {
                                 </p>
                               )}
                             </div>
-                            {point.open24h && (
-                              <span className="text-[9px] bg-green-100 text-green-800 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">
-                                24H
-                              </span>
-                            )}
+                            {/* Tiga keadaan, bukan dua. "Tidak tahu" tidak
+                                boleh disamarkan menjadi "buka". */}
+                            <span
+                              className={`text-[9px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap ${
+                                state === 'open'
+                                  ? 'bg-green-100 text-green-800'
+                                  : state === 'closed'
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : 'bg-gray-100 text-gray-600'
+                              }`}
+                            >
+                              {state === 'open'
+                                ? point.open24h
+                                  ? '24H'
+                                  : 'OPEN'
+                                : state === 'closed'
+                                  ? 'CLOSED'
+                                  : 'HOURS N/A'}
+                            </span>
                           </li>
                           );
                         })}
                       </ul>
                       <p className="text-[10px] text-gray-400 mt-2">
-                        Source: OpenStreetMap. Opening hours come from community
-                        data and may not always be up to date.
+                        Source: OpenStreetMap. &quot;Hours n/a&quot; means the
+                        place has no opening hours recorded - it may or may not
+                        be open. Community data is not always up to date, so
+                        call ahead when you can.
                       </p>
                     </>
                   )}
@@ -721,6 +847,7 @@ export default function SafeRoutePage() {
               .filter((r) => r.id !== selected?.id)
               .map((r) => ({ id: r.id, path: r.path }))}
             onSelectAlternative={setSelectedId}
+            arrivesAt={arrivesAt}
           />
         </div>
 

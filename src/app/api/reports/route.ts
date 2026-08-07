@@ -5,6 +5,24 @@ import { prisma } from '@/lib/prisma';
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'video/mp4'];
 
+/**
+ * Batas jumlah lampiran. Bukan batas teknis, melainkan batas kesabaran:
+ * tiap berkas diunggah berurutan, dan formulir yang menggantung satu menit
+ * membuat orang menutupnya sebelum laporan terkirim.
+ */
+const MAX_FILES = 5;
+
+/**
+ * Koordinat bersifat opsional, jadi nilai yang hilang atau tidak masuk akal
+ * disimpan sebagai null - bukan ditolak. Laporan tanpa titik peta masih
+ * merupakan laporan yang sah dan berguna.
+ */
+function toCoord(raw: FormDataEntryValue | null): number | null {
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && Math.abs(n) <= 180 ? n : null;
+}
+
 export async function POST(request: Request) {
   const formData = await request.formData();
 
@@ -12,8 +30,18 @@ export async function POST(request: Request) {
   const location = formData.get('location');
   const timestamp = formData.get('timestamp');
   const description = formData.get('description');
-  const evidence = formData.get('evidence');
   const ownerToken = formData.get('ownerToken');
+  const lat = formData.get('lat');
+  const lon = formData.get('lon');
+  const locationSource = formData.get('locationSource');
+
+  // getAll: formulir mengirim satu field 'evidence' berulang kali, satu per
+  // berkas. get() hanya akan mengambil yang pertama dan diam-diam membuang
+  // sisanya - persis jenis kehilangan yang tidak akan pernah dilaporkan
+  // pengguna karena layarnya tetap menyatakan berhasil.
+  const files = formData
+    .getAll('evidence')
+    .filter((f): f is File => f instanceof File && f.size > 0);
 
   if (!category || !location || !timestamp) {
     return NextResponse.json(
@@ -31,14 +59,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'timestamp is invalid' }, { status: 400 });
   }
 
-  let evidenceUrl: string | null = null;
+  if (files.length > MAX_FILES) {
+    return NextResponse.json(
+      { error: `Please attach at most ${MAX_FILES} files` },
+      { status: 400 }
+    );
+  }
 
-  if (evidence instanceof File && evidence.size > 0) {
-    if (evidence.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: 'evidence file must be 5MB or smaller' }, { status: 400 });
+  const evidenceUrls: string[] = [];
+
+  for (const file of files) {
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `"${file.name}" is larger than 5MB` },
+        { status: 400 }
+      );
     }
-    if (!ALLOWED_TYPES.includes(evidence.type)) {
-      return NextResponse.json({ error: 'evidence must be PNG, JPG, or MP4' }, { status: 400 });
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return NextResponse.json(
+        { error: `"${file.name}" must be PNG, JPG, or MP4` },
+        { status: 400 }
+      );
     }
 
     // Kegagalan unggah tidak boleh muncul sebagai 500 tanpa penjelasan.
@@ -46,12 +87,12 @@ export async function POST(request: Request) {
     // atau sudah kedaluwarsa, dan pelapor perlu tahu bahwa laporannya bisa
     // tetap dikirim tanpa lampiran.
     try {
-      const blob = await put(`evidence/${evidence.name}`, evidence, {
+      const blob = await put(`evidence/${file.name}`, file, {
         access: 'public',
         addRandomSuffix: true,
         token: process.env.BLOB_READ_WRITE_TOKEN,
       });
-      evidenceUrl = blob.url;
+      evidenceUrls.push(blob.url);
     } catch (err) {
       console.error('[reports] gagal mengunggah bukti:', String(err));
       return NextResponse.json(
@@ -70,7 +111,13 @@ export async function POST(request: Request) {
       location: location as string,
       timestamp: parsedTimestamp,
       description: (description as string) || null,
-      evidenceUrl,
+      evidenceUrls,
+      // Lampiran pertama juga disimpan di kolom lama agar tampilan yang
+      // belum diperbarui tetap menampilkan sesuatu, bukan kosong.
+      evidenceUrl: evidenceUrls[0] ?? null,
+      lat: toCoord(lat),
+      lon: toCoord(lon),
+      locationSource: typeof locationSource === 'string' ? locationSource : null,
       ownerToken,
     },
   });

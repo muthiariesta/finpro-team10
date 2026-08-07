@@ -21,7 +21,30 @@ export interface IncidentItem {
   /** Waktu laporan dikirim; inilah dasar kode rujukan. */
   createdAt: string;
   description: string | null;
+  /** Lampiran pertama; ada pada laporan lama maupun baru. */
   evidenceUrl: string | null;
+  /** Semua lampiran. Kosong pada laporan yang dibuat sebelum fitur ini ada. */
+  evidenceUrls?: string[];
+}
+
+/**
+ * Daftar lampiran sebuah laporan, tanpa duplikat.
+ *
+ * Laporan baru menyimpan berkas pertamanya di dua tempat sekaligus
+ * (evidenceUrl dan evidenceUrls[0]) demi laporan lama yang hanya punya
+ * kolom pertama. Tanpa penggabungan ini, berkas itu akan tampil dua kali.
+ */
+export function attachmentsOf(incident: {
+  evidenceUrl?: string | null;
+  evidenceUrls?: string[] | null;
+}): string[] {
+  return [
+    ...new Set(
+      [incident.evidenceUrl, ...(incident.evidenceUrls ?? [])].filter(
+        (url): url is string => Boolean(url)
+      )
+    ),
+  ];
 }
 
 export const CATEGORIES = [

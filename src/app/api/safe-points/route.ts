@@ -171,6 +171,11 @@ export async function POST(request: Request) {
             name: tags.name || tags['name:id'] || tags.brand || 'Tanpa nama',
             position,
             open24h: isOpen24h(tags),
+            // Dikirim apa adanya, tidak ditafsirkan di sini. Penilaiannya
+            // bergantung pada perkiraan jam tiba, dan itu berubah setiap
+            // pengguna mengganti jam berangkat atau memilih rute lain -
+            // sesuatu yang terjadi di peramban, jauh setelah respons ini.
+            openingHours: tags.opening_hours ?? null,
           };
         })
         .filter(Boolean);

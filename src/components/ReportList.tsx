@@ -17,6 +17,7 @@ import {
   categoryIcon,
   categoryLabel,
   categoryStyle,
+  attachmentsOf,
   formatTimestamp,
   STATUS_LABELS,
   STATUS_STYLES,
@@ -286,17 +287,21 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
                   </div>
 
                   <div className="shrink-0 flex items-center gap-3">
-                    {incident.evidenceUrl && (
+                    {/* Tiap lampiran ditautkan sendiri-sendiri. Menautkan
+                        hanya yang pertama membuat foto lainnya seolah tidak
+                        pernah terkirim. */}
+                    {attachmentsOf(incident).map((url, i, all) => (
                       <a
-                        href={incident.evidenceUrl}
+                        key={url}
+                        href={url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-pink-700 text-xs font-semibold hover:underline flex items-center gap-1"
                       >
                         <FileText className="w-3.5 h-3.5" />
-                        View evidence
+                        {all.length === 1 ? 'View evidence' : `File ${i + 1}`}
                       </a>
-                    )}
+                    ))}
                     {isOwner && (
                       <>
                         <button

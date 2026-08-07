@@ -14,7 +14,10 @@
 
 import { Fuel, Hospital, Pill, ShieldCheck, Store, type LucideIcon } from 'lucide-react';
 
+import { evaluateOpening, type OpenState } from './openingHours';
 import type { LatLng } from './riskApi';
+
+export type { OpenState };
 
 export type SafePointType =
   | 'police'
@@ -39,6 +42,8 @@ export interface SafePoint {
   position: LatLng;
   /** true bila OSM menandai tempat ini buka 24 jam. */
   open24h: boolean;
+  /** Tag opening_hours apa adanya; ditafsirkan lewat evaluateOpening(). */
+  openingHours?: string | null;
   /** Jarak ke titik acuan dalam meter; diisi setelah pengurutan. */
   distanceM?: number;
 }
@@ -58,6 +63,20 @@ export const SAFE_POINT_ICONS: Record<SafePointType, LucideIcon> = {
   pharmacy: Pill,
   convenience: Store,
 };
+
+/**
+ * Apakah tempat ini buka pada waktu tertentu - biasanya perkiraan waktu
+ * tiba, bukan waktu berangkat. Tempat yang buka saat kita berangkat tidak
+ * ada gunanya kalau sudah tutup ketika kita sampai di sana.
+ *
+ * Hasil 'unknown' bukan kegagalan, melainkan jawaban yang sah dan sering
+ * terjadi: sebagian besar tempat di OSM tidak mencantumkan jam buka sama
+ * sekali. Tempat seperti itu tetap ditampilkan, hanya tanpa janji.
+ */
+export function openStateAt(point: SafePoint, at: Date): OpenState {
+  if (point.open24h) return 'open';
+  return evaluateOpening(point.openingHours, at);
+}
 
 /** Jarak dua koordinat dalam meter (haversine). */
 export function distanceMeters(a: LatLng, b: LatLng): number {

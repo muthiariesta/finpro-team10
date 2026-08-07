@@ -20,6 +20,8 @@ import {
   SAFE_POINT_ICONS,
   SAFE_POINT_LABELS,
   formatDistance,
+  openStateAt,
+  type OpenState,
   type SafePoint,
 } from '../lib/safePoints';
 
@@ -64,6 +66,8 @@ interface MapProps {
    */
   alternatives?: { id: number; path: LatLng[] }[];
   onSelectAlternative?: (id: number) => void;
+  /** Perkiraan waktu tiba; menentukan warna cincin penanda tempat aman. */
+  arrivesAt?: Date | null;
 }
 
 /**
@@ -76,9 +80,10 @@ interface MapProps {
  * Warna cincin menandai ketersediaan: hijau berarti data OSM menyatakan
  * tempat itu buka 24 jam, abu-abu berarti jam bukanya tidak diketahui.
  */
-function safePointIcon(point: SafePoint) {
+function safePointIcon(point: SafePoint, state: OpenState) {
   const Icon = SAFE_POINT_ICONS[point.type];
-  const ring = point.open24h ? '#16A34A' : '#9CA3AF';
+  const ring =
+    state === 'open' ? '#16A34A' : state === 'closed' ? '#E11D48' : '#9CA3AF';
   const svg = renderToStaticMarkup(
     createElement(Icon, { size: 14, color: '#374151', strokeWidth: 2.25 })
   );
@@ -127,6 +132,7 @@ export default function SafeRouteMap({
   datetime,
   alternatives = [],
   onSelectAlternative,
+  arrivesAt = null,
 }: MapProps) {
   const [heatOn, setHeatOn] = useState(false);
   const [heatStatus, setHeatStatus] = useState({ loading: false, covered: 0, total: 0 });
@@ -227,22 +233,42 @@ export default function SafeRouteMap({
         )}
 
         {/* Safe point di sekitar rute */}
-        {safePoints.map((point) => (
-          <Marker key={point.id} position={point.position} icon={safePointIcon(point)}>
-            <Popup>
-              <strong>{point.name}</strong>
-              <br />
-              {SAFE_POINT_LABELS[point.type]}
-              {point.open24h && ' • open 24 hours'}
-              {point.distanceM !== undefined && (
-                <>
-                  <br />
-                  {formatDistance(point.distanceM)} from destination
-                </>
-              )}
-            </Popup>
-          </Marker>
-        ))}
+        {safePoints.map((point) => {
+          const state: OpenState = arrivesAt ? openStateAt(point, arrivesAt) : 'unknown';
+          return (
+            <Marker
+              key={point.id}
+              position={point.position}
+              icon={safePointIcon(point, state)}
+            >
+              <Popup>
+                <strong>{point.name}</strong>
+                <br />
+                {SAFE_POINT_LABELS[point.type]}
+                <br />
+                {state === 'open'
+                  ? point.open24h
+                    ? 'Open 24 hours'
+                    : 'Open when you arrive'
+                  : state === 'closed'
+                    ? 'Closed when you arrive'
+                    : 'Opening hours unknown'}
+                {point.openingHours && (
+                  <>
+                    <br />
+                    <span style={{ color: '#6B7280' }}>{point.openingHours}</span>
+                  </>
+                )}
+                {point.distanceM !== undefined && (
+                  <>
+                    <br />
+                    {formatDistance(point.distanceM)} from destination
+                  </>
+                )}
+              </Popup>
+            </Marker>
+          );
+        })}
 
         {/* Titik sampel penilaian - menunjukkan DI MANA risiko diukur */}
         {riskSegments.map((segment, i) => (

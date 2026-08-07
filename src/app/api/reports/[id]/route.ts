@@ -83,8 +83,18 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   await prisma.incident.delete({ where: { id } });
 
-  if (incident.evidenceUrl) {
-    await del(incident.evidenceUrl, { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {});
+  // SEMUA lampiran, bukan hanya yang pertama. Menghapus laporan tetapi
+  // meninggalkan fotonya di penyimpanan publik berarti bukti kejadian tetap
+  // dapat diakses siapa pun yang punya tautannya - kegagalan privasi yang
+  // tidak akan terlihat dari layar mana pun karena laporannya sudah hilang.
+  const attachments = new Set(
+    [incident.evidenceUrl, ...(incident.evidenceUrls ?? [])].filter(
+      (url): url is string => Boolean(url)
+    )
+  );
+
+  for (const url of attachments) {
+    await del(url, { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {});
   }
 
   return NextResponse.json({ success: true });

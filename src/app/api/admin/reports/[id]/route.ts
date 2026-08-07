@@ -47,6 +47,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       timestamp: true,
       description: true,
       evidenceUrl: true,
+      evidenceUrls: true,
       status: true,
       adminNote: true,
       reviewedAt: true,

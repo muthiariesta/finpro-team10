@@ -32,6 +32,7 @@ export async function POST(request: Request) {
       createdAt: true,
       description: true,
       evidenceUrl: true,
+      evidenceUrls: true,
       status: true,
       adminNote: true,
     },
