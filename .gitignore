@@ -50,3 +50,6 @@ next-env.d.ts
 # vercel
 .vercel
 .env*
+
+# Contoh konfigurasi wajib ikut ter-commit
+!.env.example

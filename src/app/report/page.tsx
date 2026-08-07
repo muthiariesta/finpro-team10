@@ -7,7 +7,14 @@ import ReportList from '@/components/ReportList';
 export const dynamic = 'force-dynamic';
 
 export default async function ReportListPage() {
+  // Laporan yang belum diverifikasi admin sengaja tidak ikut ditarik.
+  // Tanpa saringan ini, tuduhan yang belum diperiksa siapa pun sudah
+  // membentuk persepsi orang tentang suatu wilayah.
+  //
+  // Milik sendiri tetap ikut apa pun statusnya, supaya pelapor bisa memantau
+  // perkembangan laporannya - keluhan terbesar pada riset pengguna.
   const incidents = await prisma.incident.findMany({
+    where: { status: 'VERIFIED' },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
@@ -17,6 +24,8 @@ export default async function ReportListPage() {
       createdAt: true,
       description: true,
       evidenceUrl: true,
+      status: true,
+      adminNote: true,
     },
   });
 

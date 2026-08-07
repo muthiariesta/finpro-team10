@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createElement, useEffect } from 'react';
+import React, { createElement, useEffect, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   MapContainer,
@@ -15,6 +15,7 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { LatLng, RiskLevel, RouteRiskSegment } from '../lib/riskApi';
+import HeatmapLayer from './HeatmapLayer';
 import {
   SAFE_POINT_ICONS,
   SAFE_POINT_LABELS,
@@ -54,6 +55,8 @@ interface MapProps {
   riskSegments?: RouteRiskSegment[];
   /** Tempat aman di sekitar rute (pos polisi, RS, SPBU, apotek, minimarket). */
   safePoints?: SafePoint[];
+  /** Waktu keberangkatan, dipakai heatmap karena risiko berubah menurut jam. */
+  datetime?: string;
 }
 
 /**
@@ -114,7 +117,10 @@ export default function SafeRouteMap({
   routePath = [],
   riskSegments = [],
   safePoints = [],
+  datetime,
 }: MapProps) {
+  const [heatOn, setHeatOn] = useState(false);
+  const [heatStatus, setHeatStatus] = useState({ loading: false, covered: 0, total: 0 });
   // Sebelum pencarian pertama, tampilkan garis lurus penghubung sebagai
   // placeholder. Setelah OSRM menjawab, ganti dengan geometri jalan asli.
   const path: LatLng[] = routePath.length > 1 ? routePath : [originCoords, destCoords];
@@ -219,7 +225,48 @@ export default function SafeRouteMap({
             <Tooltip>{labelFor(segment)}</Tooltip>
           </CircleMarker>
         ))}
+        {datetime && (
+          <HeatmapLayer enabled={heatOn} datetime={datetime} onStatus={setHeatStatus} />
+        )}
       </MapContainer>
+
+      {/* Sakelar heatmap. Ditaruh di luar MapContainer agar tidak ikut
+          tergeser saat peta di-pan, dan tidak menangkap gestur peta. */}
+      {datetime && (
+        <div className="absolute bottom-4 right-4 z-[500] flex flex-col items-end gap-1.5">
+          {heatOn && (
+            <span className="bg-white/95 border border-gray-200 rounded-lg px-2.5 py-1 text-[10px] font-semibold text-gray-600 shadow-sm">
+              {heatStatus.loading
+                ? 'Loading risk data...'
+                : heatStatus.covered > 0
+                  ? `${heatStatus.covered} of ${heatStatus.total} cells scored`
+                  : 'No risk data in this area'}
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setHeatOn((p) => !p)}
+            aria-pressed={heatOn}
+            className="flex items-center gap-2 bg-white border border-gray-200 rounded-full pl-1 pr-3 py-1 shadow-md hover:border-gray-300 transition-colors cursor-pointer"
+          >
+            <span
+              className={`w-9 h-5 rounded-full relative flex items-center transition-colors ${
+                heatOn ? 'bg-[#D91176]' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`w-4 h-4 bg-white rounded-full absolute shadow-sm transition-all ${
+                  heatOn ? 'right-0.5' : 'left-0.5'
+                }`}
+              />
+            </span>
+            <span className="text-xs font-bold text-gray-700 whitespace-nowrap">
+              Heatmap {heatOn ? 'on' : 'off'}
+            </span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

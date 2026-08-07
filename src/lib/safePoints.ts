@@ -25,6 +25,15 @@ export type SafePointType =
 
 export interface SafePoint {
   id: string;
+  /**
+   * true bila tempat ini didaftarkan pengelola SafeHer, bukan diambil dari
+   * OpenStreetMap. Perlu dibedakan karena keduanya punya tingkat keandalan
+   * berbeda: OSM luas tapi jam bukanya sering usang, sedangkan daftar
+   * pengelola sudah diperiksa.
+   */
+  curated?: boolean;
+  /** Nomor yang bisa dihubungi; hanya ada pada tempat kurasi pengelola. */
+  phone?: string | null;
   type: SafePointType;
   name: string;
   position: LatLng;

@@ -142,7 +142,7 @@ export const Navbar: React.FC = () => {
             <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 19c-3.83-1.04-6.8-4.88-7.8-8.94L12 14v6z" />
           </svg>
         </div>
-        <div className="hidden lg:flex flex-col justify-center">
+        <div className="hidden xl:flex flex-col justify-center">
           <h1 className="font-extrabold text-[19px] leading-tight text-gray-900 tracking-tight">
             Safe<span className="font-semibold text-[#D91176]">Her</span>
           </h1>
@@ -153,7 +153,7 @@ export const Navbar: React.FC = () => {
       </Link>
 
       {/* TENGAH: MENU (desktop saja) */}
-      <div className="hidden lg:flex items-center gap-6 xl:gap-8 h-full">
+      <div className="hidden xl:flex items-center gap-5 2xl:gap-8 h-full">
         {NAV_LINKS.map((link) => (
           <NavItem key={link.href} {...link} />
         ))}
@@ -175,7 +175,7 @@ export const Navbar: React.FC = () => {
           onClick={() => setMenuOpen((p) => !p)}
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
           aria-expanded={menuOpen}
-          className="lg:hidden p-2 -mr-1 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+          className="xl:hidden p-2 -mr-1 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
         >
           {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
@@ -188,9 +188,9 @@ export const Navbar: React.FC = () => {
             type="button"
             aria-label="Close menu"
             onClick={() => setMenuOpen(false)}
-            className="lg:hidden fixed inset-0 top-[72px] bg-black/30 z-40 cursor-default"
+            className="xl:hidden fixed inset-0 top-[72px] bg-black/30 z-40 cursor-default"
           />
-          <div className="lg:hidden fixed left-0 right-0 top-[72px] bg-white border-b border-gray-200 shadow-lg z-50 px-4 py-3">
+          <div className="xl:hidden fixed left-0 right-0 top-[72px] bg-white border-b border-gray-200 shadow-lg z-50 px-4 py-3">
             <div className="flex flex-col">
               {NAV_LINKS.map((link) => {
                 const isActive = pathname === link.href;

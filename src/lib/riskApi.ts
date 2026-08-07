@@ -38,6 +38,15 @@ export type RiskResult =
       distanceKm: number | null;
       disclaimer: string;
       modelVersion: string;
+      /**
+       * Asal angka ini. 'model' berarti dari RiskScore API; 'admin' berarti
+       * dari penilaian wilayah yang ditetapkan pengelola. Perlu dibedakan
+       * supaya pengguna tahu penilaian mana yang berbasis data historis dan
+       * mana yang penilaian manusia.
+       */
+      source: 'model' | 'admin';
+      /** Nama wilayah, hanya terisi bila source === 'admin'. */
+      areaName?: string;
     }
   /** Lokasi di luar cakupan dataset. JANGAN tampilkan sebagai "aman". */
   | { status: 'no_data'; disclaimer: string }
@@ -128,6 +137,7 @@ export async function fetchRiskScore(
       distanceKm: data.distance_km,
       disclaimer: data.disclaimer,
       modelVersion: data.model_version,
+      source: 'model',
     };
   } catch (err) {
     const aborted = err instanceof DOMException && err.name === 'AbortError';
@@ -158,6 +168,86 @@ export function toSafetyPercentage(score: number): number {
  * ---------------------------------------------------------------------- */
 
 export type LatLng = [number, number];
+
+/* -------------------------------------------------------------------------
+ * Penilaian wilayah dari pengelola
+ *
+ * Model dilatih dengan dataset Chicago, sehingga setiap koordinat Indonesia
+ * dijawab "tidak ada data". Tabel wilayah yang diisi pengelola menutup celah
+ * itu: bila model tidak punya jawaban untuk sebuah titik, penilaian manusia
+ * yang dipakai - dan asalnya selalu disebutkan.
+ * ---------------------------------------------------------------------- */
+
+export interface AdminRiskArea {
+  id: string;
+  areaName: string;
+  streetSegment: string;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'LIMITED';
+  lat: number;
+  lon: number;
+  radiusM: number;
+}
+
+/** Skor mewakili titik tengah tiap tingkat, sekadar agar tampilan seragam. */
+const AREA_SCORES: Record<string, { score: number; level: RiskLevel }> = {
+  LOW: { score: 20, level: 'Low' },
+  MEDIUM: { score: 50, level: 'Medium' },
+  HIGH: { score: 80, level: 'High' },
+};
+
+export async function fetchRiskAreas(): Promise<AdminRiskArea[]> {
+  try {
+    const res = await fetch('/api/admin/risk-areas');
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.areas) ? data.areas : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Jarak dua koordinat dalam meter (haversine). */
+function metersBetween(a: LatLng, b: LatLng): number {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLon = toRad(b[1] - a[1]);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/**
+ * Mencari penilaian pengelola untuk sebuah titik.
+ *
+ * Bila beberapa wilayah bertumpuk, yang paling berisiko menang - bukan yang
+ * terdekat. Satu ruas berbahaya tidak menjadi aman hanya karena kebetulan
+ * berada di dalam wilayah lain yang tenang.
+ */
+function areaFallback(point: LatLng, areas: AdminRiskArea[]): RiskResult | null {
+  const matches = areas
+    .filter((a) => AREA_SCORES[a.riskLevel] && metersBetween(point, [a.lat, a.lon]) <= a.radiusM)
+    .sort((x, y) => AREA_SCORES[y.riskLevel].score - AREA_SCORES[x.riskLevel].score);
+
+  const best = matches[0];
+  if (!best) return null;
+
+  const { score, level } = AREA_SCORES[best.riskLevel];
+  return {
+    status: 'ok',
+    score,
+    level,
+    approximate: true,
+    distanceKm: null,
+    disclaimer:
+      'Penilaian ini ditetapkan pengelola SafeHer untuk wilayah tersebut, ' +
+      'bukan hasil model prediksi berbasis data historis.',
+    modelVersion: 'admin',
+    source: 'admin',
+    areaName: best.areaName,
+  };
+}
 
 export interface RouteRiskSegment {
   position: LatLng;
@@ -208,7 +298,8 @@ export function sampleAlongPath(path: LatLng[], count: number): LatLng[] {
 export async function fetchRouteRisk(
   path: LatLng[],
   datetime: string,
-  sampleCount = 6
+  sampleCount = 6,
+  areas: AdminRiskArea[] = []
 ): Promise<RouteRisk> {
   const points = sampleAlongPath(path, sampleCount);
   if (points.length === 0) {
@@ -222,10 +313,14 @@ export async function fetchRouteRisk(
 
   const segments: RouteRiskSegment[] = [];
   for (const position of points) {
-    segments.push({
-      position,
-      result: await fetchRiskScore(position[0], position[1], datetime),
-    });
+    let result = await fetchRiskScore(position[0], position[1], datetime);
+
+    // Model tidak punya jawaban untuk titik ini; coba penilaian pengelola.
+    if (result.status === 'no_data') {
+      result = areaFallback(position, areas) ?? result;
+    }
+
+    segments.push({ position, result });
   }
 
   const scored = segments

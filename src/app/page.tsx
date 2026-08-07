@@ -7,6 +7,7 @@ import { Info, Loader2, Map, TriangleAlert } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import LocationInput, { type PlaceSuggestion } from '../components/LocationInput';
 import {
+  fetchRiskAreas,
   fetchRouteRisk,
   toApiDatetime,
   toSafetyPercentage,
@@ -151,10 +152,14 @@ export default function SafeRoutePage() {
 
     // 3. Nilai risiko di beberapa titik sepanjang rute, memakai jam
     //    keberangkatan pilihan user - risiko berubah menurut waktu (PRD FR#6).
+    // Wilayah yang dinilai pengelola dipakai sebagai cadangan ketika model
+    // tidak mencakup lokasi tersebut - yaitu seluruh Indonesia.
+    const areas = await fetchRiskAreas();
     const risk = await fetchRouteRisk(
       path,
       toApiDatetime(departureTime),
-      RISK_SAMPLE_COUNT
+      RISK_SAMPLE_COUNT,
+      areas
     );
     setRouteRisk(risk);
 
@@ -390,7 +395,7 @@ export default function SafeRoutePage() {
                     );
                   }
 
-                  const { score, level, approximate } = overall;
+                  const { score, level, approximate, source, areaName } = overall;
                   const safetyPercentage = toSafetyPercentage(score);
                   const { covered = 0, total = 0 } = routeRisk ?? {};
                   const partialCoverage = covered < total;
@@ -448,7 +453,14 @@ export default function SafeRoutePage() {
 
                         <p className="text-[11px] text-gray-600 font-medium mb-1">
                           Risk Assessment: <strong className="capitalize">{level}</strong>
-                          {approximate && ' • based on nearest area'} • at {departureTime}
+                          {source === 'model' && approximate && ' • based on nearest area'}
+                          {' • at '}
+                          {departureTime}
+                          {source === 'admin' && (
+                            <span className="block text-[10px] text-blue-700 font-semibold mt-0.5">
+                              Assessed by SafeHer for {areaName}, not by the historical model
+                            </span>
+                          )}
                         </p>
 
                         {/* Penilaian mengikuti segmen paling berisiko, jadi
@@ -504,6 +516,12 @@ export default function SafeRoutePage() {
                                 {point.distanceM !== undefined &&
                                   ` • ${formatDistance(point.distanceM)} from destination`}
                               </p>
+                              {point.curated && (
+                                <p className="text-[10px] text-emerald-700 font-semibold">
+                                  Verified by SafeHer
+                                  {point.phone ? ` • ${point.phone}` : ''}
+                                </p>
+                              )}
                             </div>
                             {point.open24h && (
                               <span className="text-[9px] bg-green-100 text-green-800 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">
@@ -581,6 +599,7 @@ export default function SafeRoutePage() {
             routePath={routePath}
             riskSegments={routeRisk?.segments ?? []}
             safePoints={safePoints}
+            datetime={toApiDatetime(departureTime)}
           />
         </div>
 

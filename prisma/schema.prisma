@@ -12,15 +12,101 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  /// Bisa berupa surel atau nomor telepon; disimpan dalam huruf kecil
+  /// supaya pencarian saat masuk tidak peka besar-kecil huruf.
+  identifier   String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+}
+
+/// Perjalanan sebuah laporan sejak dikirim sampai diputuskan admin.
+///
+/// PENDING adalah keadaan awal. Hanya laporan VERIFIED yang boleh muncul di
+/// feed publik: laporan yang belum diperiksa tidak boleh ikut membentuk
+/// persepsi orang tentang suatu wilayah.
+enum ReportStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 model Incident {
-  id          String   @id @default(cuid())
+  id          String       @id @default(cuid())
   category    String
   location    String
   timestamp   DateTime
   description String?
   evidenceUrl String?
   ownerToken  String
-  createdAt   DateTime @default(now())
+  status      ReportStatus @default(PENDING)
+  /// Tanggapan admin yang terlihat oleh pelapor; menjawab keluhan riset
+  /// bahwa laporan terasa hilang begitu saja setelah dikirim.
+  adminNote   String?
+  reviewedAt  DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@index([status])
+}
+
+/// Kategori tempat aman yang didaftarkan admin.
+enum SafePointType {
+  MEDICAL
+  POLICE
+  COMMERCIAL
+}
+
+/// Safe point kurasi admin.
+///
+/// Melengkapi hasil OpenStreetMap, bukan menggantikannya. OSM luas tapi jam
+/// bukanya sering usang; daftar ini memuat tempat yang sudah dipastikan
+/// benar-benar buka dan bisa dituju.
+model SafePointEntry {
+  id        String        @id @default(cuid())
+  name      String
+  type      SafePointType
+  location  String
+  phone     String?
+  /// Koordinat opsional. Tanpa ini tempatnya tetap tampil di daftar admin,
+  /// hanya tidak bisa digambar di peta.
+  lat       Float?
+  lon       Float?
+  createdAt DateTime      @default(now())
+}
+
+enum AreaRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  LIMITED
+}
+
+/// Penilaian risiko wilayah yang ditetapkan admin.
+///
+/// Inilah jawaban atas keterbatasan terbesar produk: model dilatih dengan
+/// dataset Chicago, sehingga seluruh Indonesia mengembalikan "tidak ada
+/// data". Dengan tabel ini, admin bisa menilai ruas jalan setempat secara
+/// manual, dan penilaian itu dipakai ketika model tidak punya jawaban.
+model RiskArea {
+  id            String        @id @default(cuid())
+  areaName      String
+  streetSegment String
+  crowdDensity  String
+  riskLevel     AreaRiskLevel @default(LIMITED)
+  lat           Float
+  lon           Float
+  /// Jangkauan pengaruh penilaian ini terhadap titik di sekitarnya.
+  radiusM       Int           @default(500)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 }
 
 /// Kontak darurat milik satu perangkat.
