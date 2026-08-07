@@ -10,7 +10,11 @@ import { PrismaNeon } from '@prisma/adapter-neon';
 import 'dotenv/config';
 
 const prisma = new PrismaClient({
-  adapter: new PrismaNeon({ connectionString: process.env.DATABASE_URL! }),
+  adapter: new PrismaNeon({
+    connectionString: (process.env.DATABASE_URL ??
+      process.env.DATABASE_POSTGRES_URL ??
+      process.env.POSTGRES_URL)!,
+  }),
 });
 
 const ACCOUNTS = [

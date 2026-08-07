@@ -5,7 +5,16 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-const connectionString = process.env.DATABASE_URL;
+/**
+ * Integrasi Neon di Vercel menyuntikkan beberapa nama sekaligus, dan nama
+ * utamanya berbeda-beda tergantung prefix yang dipilih saat integrasi dibuat.
+ * Ketiganya diterima agar penyiapan di mesin lain tidak gagal hanya karena
+ * memakai nama yang berbeda.
+ */
+const connectionString =
+  process.env.DATABASE_URL ??
+  process.env.DATABASE_POSTGRES_URL ??
+  process.env.POSTGRES_URL;
 
 /**
  * Berhenti dengan pesan yang menyebut penyebabnya.
