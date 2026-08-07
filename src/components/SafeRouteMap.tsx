@@ -57,6 +57,13 @@ interface MapProps {
   safePoints?: SafePoint[];
   /** Waktu keberangkatan, dipakai heatmap karena risiko berubah menurut jam. */
   datetime?: string;
+  /**
+   * Rute alternatif yang sedang TIDAK dipilih. Digambar tipis dan pudar di
+   * belakang rute terpilih supaya pengguna melihat bahwa pilihannya memang
+   * melewati jalan yang berbeda - bukan sekadar angka berbeda di panel.
+   */
+  alternatives?: { id: number; path: LatLng[] }[];
+  onSelectAlternative?: (id: number) => void;
 }
 
 /**
@@ -118,6 +125,8 @@ export default function SafeRouteMap({
   riskSegments = [],
   safePoints = [],
   datetime,
+  alternatives = [],
+  onSelectAlternative,
 }: MapProps) {
   const [heatOn, setHeatOn] = useState(false);
   const [heatStatus, setHeatStatus] = useState({ loading: false, covered: 0, total: 0 });
@@ -169,6 +178,32 @@ export default function SafeRouteMap({
         <Marker position={destCoords} icon={customIcon}>
           <Popup>Destination</Popup>
         </Marker>
+
+        {/* RUTE ALTERNATIF - di bawah rute terpilih, bisa diklik.
+            Digambar dua kali: satu garis tebal transparan sebagai area
+            sentuh (garis 4px terlalu tipis untuk dibidik dengan jari),
+            satu garis tipis yang benar-benar terlihat. */}
+        {alternatives.map((alt) => (
+          <React.Fragment key={`alt-${alt.id}`}>
+            <Polyline
+              positions={alt.path}
+              pathOptions={{ color: '#000', opacity: 0, weight: 20 }}
+              interactive={Boolean(onSelectAlternative)}
+              eventHandlers={
+                onSelectAlternative
+                  ? { click: () => onSelectAlternative(alt.id) }
+                  : undefined
+              }
+            >
+              <Tooltip sticky>Click to compare this route</Tooltip>
+            </Polyline>
+            <Polyline
+              positions={alt.path}
+              pathOptions={{ color: '#94A3B8', weight: 4, opacity: 0.75 }}
+              interactive={false}
+            />
+          </React.Fragment>
+        ))}
 
         {/* GARIS RUTE - diwarnai per segmen bila sudah dinilai */}
         {chunks.length > 0 ? (

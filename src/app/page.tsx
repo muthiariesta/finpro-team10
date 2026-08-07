@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { Info, Loader2, Map, TriangleAlert } from 'lucide-react';
+import { Check, Info, Loader2, Map, TriangleAlert } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import LocationInput, { type PlaceSuggestion } from '../components/LocationInput';
 import {
@@ -34,8 +34,43 @@ const SafeRouteMap = dynamic(() => import('../components/SafeRouteMap'), {
   )
 });
 
-/** Banyaknya titik yang dinilai di sepanjang rute. */
+/**
+ * Banyaknya titik yang dinilai di sepanjang rute.
+ *
+ * Lebih sedikit ketika ada beberapa alternatif: penilaian berjalan berurutan
+ * (lihat fetchRouteRisk), jadi tiga rute x enam titik berarti 18 panggilan
+ * beruntun. Empat titik per rute tetap cukup untuk membandingkan, dan
+ * perbandingannya jadi adil karena semua rute dinilai dengan cara yang sama.
+ */
 const RISK_SAMPLE_COUNT = 6;
+const RISK_SAMPLE_COUNT_MULTI = 4;
+
+/** Banyaknya rute yang diminta ke OSRM, termasuk rute utama. */
+const MAX_ROUTES = 3;
+
+/** Satu pilihan rute yang benar-benar berasal dari OSRM. */
+interface RouteOption {
+  id: number;
+  path: LatLng[];
+  viaRoad: string;
+  durationMin: number;
+  distanceKm: string;
+  risk: RouteRisk | null;
+}
+
+/**
+ * Nilai urut sebuah rute: makin kecil makin didahulukan.
+ *
+ * Rute yang sudah dinilai selalu di atas rute tanpa data, berapa pun
+ * skornya. Rute yang tidak terjangkau penilaian bukan rute aman - ia hanya
+ * rute yang belum diketahui, dan menempatkannya di puncak daftar sama saja
+ * merekomendasikan sesuatu yang tidak kita ketahui.
+ */
+function rankOf(route: RouteOption): number {
+  const overall = route.risk?.overall;
+  if (overall?.status === 'ok') return overall.score;
+  return 1000 + route.durationMin;
+}
 
 /** Mengubah nama tempat menjadi koordinat lewat Nominatim. */
 async function geocode(query: string): Promise<LatLng | null> {
@@ -57,22 +92,24 @@ export default function SafeRoutePage() {
   const router = useRouter();
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [routeRisk, setRouteRisk] = useState<RouteRisk | null>(null);
   const [originCoords, setOriginCoords] = useState<LatLng>([41.8781, -87.6298]);
   const [destCoords, setDestCoords] = useState<LatLng>([41.8814, -87.7280]);
-  /** Geometri jalan sungguhan dari OSRM; kosong jika routing gagal. */
-  const [routePath, setRoutePath] = useState<LatLng[]>([]);
+  /** Semua rute dari OSRM, sudah dinilai. Kosong jika routing gagal. */
+  const [routes, setRoutes] = useState<RouteOption[]>([]);
+  const [selectedId, setSelectedId] = useState(0);
   /** Pesan kegagalan pencarian rute; menggantikan seluruh kartu hasil. */
   const [routeError, setRouteError] = useState<string | null>(null);
-  /** Safe point di sekitar rute, terurut dari yang terdekat ke tujuan. */
-  const [safePoints, setSafePoints] = useState<SafePoint[]>([]);
+  /**
+   * Safe point per rute. Disimpan terpisah, bukan satu daftar, karena tiap
+   * rute melewati jalan berbeda sehingga tempat aman di sekitarnya pun
+   * berbeda - itulah salah satu alasan sebuah rute layak dipilih.
+   */
+  const [safePointsByRoute, setSafePointsByRoute] = useState<Record<number, SafePoint[]>>({});
 
-  // State untuk Rute & Geocoding
-  const [routeInfo, setRouteInfo] = useState<{
-    viaRoad: string;
-    durationMin: number;
-    distanceKm: string;
-  } | null>(null);
+  const selected = routes.find((r) => r.id === selectedId) ?? routes[0] ?? null;
+  const routePath = selected?.path ?? [];
+  const routeRisk = selected?.risk ?? null;
+  const safePoints = safePointsByRoute[selected?.id ?? -1] ?? [];
 
   // State Input Form
   const [originText, setOriginText] = useState('The Loop, Chicago');
@@ -86,11 +123,10 @@ export default function SafeRoutePage() {
   const handleFindRoutes = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setRouteInfo(null);
-    setRoutePath([]);
-    setRouteRisk(null);
+    setRoutes([]);
+    setSelectedId(0);
     setRouteError(null);
-    setSafePoints([]);
+    setSafePointsByRoute({});
 
     // 1. Ubah kedua input menjadi koordinat. Berurutan, bukan paralel:
     //    Nominatim membatasi 1 permintaan per detik.
@@ -110,29 +146,42 @@ export default function SafeRoutePage() {
 
     // 2. Fetch OSRM Routing. overview=full + geometries=geojson memberi
     //    geometri jalan sungguhan, bukan sekadar jarak & durasi.
-    let path: LatLng[] = [];
+    //    alternatives meminta rute lain lewat jalan berbeda; OSRM hanya
+    //    memberinya bila memang ada, jadi jumlahnya bisa saja tetap satu.
+    let found: Omit<RouteOption, 'risk'>[] = [];
     try {
       const osrmRes = await fetch(
         `https://router.project-osrm.org/route/v1/driving/` +
           `${origin[1]},${origin[0]};${dest[1]},${dest[0]}` +
-          `?overview=full&geometries=geojson`
+          // alternatives=true, bukan angka. Server demo OSRM menerima
+          // keduanya pada versi baru, tetapi hanya bentuk boolean yang
+          // dijamin ada sejak lama - dan jumlahnya toh sudah dibatasi
+          // slice(0, MAX_ROUTES) di bawah.
+          `?overview=full&geometries=geojson&alternatives=true`
       );
       const osrmData = await osrmRes.json();
 
-      if (osrmData.routes && osrmData.routes.length > 0) {
-        const route = osrmData.routes[0];
-        setRouteInfo({
-          viaRoad: `Via ${route.legs[0]?.summary || destinationText.split(',')[0]}`,
-          durationMin: Math.round(route.duration / 60),
-          distanceKm: `${(route.distance / 1000).toFixed(1)} km`,
-        });
-
-        // GeoJSON memakai urutan [lon, lat]; Leaflet memakai [lat, lon].
-        path = (route.geometry?.coordinates ?? []).map(
-          ([lng, lt]: [number, number]) => [lt, lng] as LatLng
-        );
-        setRoutePath(path);
-      }
+      found = ((osrmData.routes ?? []) as Record<string, never>[])
+        .slice(0, MAX_ROUTES)
+        .map((route, id) => ({
+          id,
+          // GeoJSON memakai urutan [lon, lat]; Leaflet memakai [lat, lon].
+          path: (
+            (route as unknown as { geometry?: { coordinates?: [number, number][] } })
+              .geometry?.coordinates ?? []
+          ).map(([lng, lt]) => [lt, lng] as LatLng),
+          viaRoad: `Via ${
+            (route as unknown as { legs?: { summary?: string }[] }).legs?.[0]?.summary ||
+            destinationText.split(',')[0]
+          }`,
+          durationMin: Math.round(
+            (route as unknown as { duration: number }).duration / 60
+          ),
+          distanceKm: `${(
+            (route as unknown as { distance: number }).distance / 1000
+          ).toFixed(1)} km`,
+        }))
+        .filter((r) => r.path.length > 1);
     } catch (osrmErr) {
       console.warn('OSRM routing gagal:', osrmErr);
     }
@@ -140,7 +189,7 @@ export default function SafeRoutePage() {
     // Tanpa rute, JANGAN mengarang garis lurus lalu menilainya. Dulu hal itu
     // membuat perjalanan di Jakarta memperoleh skor milik titik asal di
     // Chicago - persis rasa aman palsu yang harus dihindari produk ini.
-    if (path.length === 0) {
+    if (found.length === 0) {
       setRouteError(
         'No road route was found between these two locations. ' +
           'Make sure the start and destination are in the same region.'
@@ -150,28 +199,62 @@ export default function SafeRoutePage() {
       return;
     }
 
-    // 3. Nilai risiko di beberapa titik sepanjang rute, memakai jam
+    // 3. Nilai risiko di beberapa titik sepanjang SETIAP rute, memakai jam
     //    keberangkatan pilihan user - risiko berubah menurut waktu (PRD FR#6).
     // Wilayah yang dinilai pengelola dipakai sebagai cadangan ketika model
     // tidak mencakup lokasi tersebut - yaitu seluruh Indonesia.
     const areas = await fetchRiskAreas();
-    const risk = await fetchRouteRisk(
-      path,
-      toApiDatetime(departureTime),
-      RISK_SAMPLE_COUNT,
-      areas
-    );
-    setRouteRisk(risk);
+    const samples = found.length > 1 ? RISK_SAMPLE_COUNT_MULTI : RISK_SAMPLE_COUNT;
 
-    // 4. Safe point di sekitar rute. Dijalankan terakhir dan tidak pernah
-    //    menggagalkan pencarian: sumbernya OpenStreetMap, bukan model Risk
-    //    Score, sehingga tetap ada isinya di wilayah tanpa data risiko.
-    const points = await fetchSafePoints(path);
-    setSafePoints(sortByDistanceTo(points, dest));
+    const scored: RouteOption[] = [];
+    for (const route of found) {
+      const risk = await fetchRouteRisk(
+        route.path,
+        toApiDatetime(departureTime),
+        samples,
+        areas
+      );
+      scored.push({ ...route, risk });
+      // Ditampilkan begitu selesai, tidak menunggu semuanya: penilaian
+      // berjalan berurutan, jadi menunggu rute ketiga berarti layar kosong
+      // padahal rute pertama sudah punya jawaban.
+      setRoutes([...scored]);
+    }
+
+    // Rute paling aman didahulukan, bukan yang paling cepat - itu inti
+    // produknya. Rute tanpa data tidak pernah naik ke atas rute yang sudah
+    // dinilai, karena "belum dinilai" bukan berarti "aman".
+    scored.sort((a, b) => rankOf(a) - rankOf(b));
+    setRoutes(scored);
+    setSelectedId(scored[0].id);
 
     setHasSearched(true);
     setIsLoading(false);
   };
+
+  /**
+   * Safe point diambil untuk rute yang sedang dipilih, bukan sekali untuk
+   * semuanya. Mengambil ketiganya di muka berarti tiga permintaan Overpass
+   * beruntun yang lambat, padahal dua di antaranya mungkin tidak pernah
+   * dilihat. Hasilnya di-cache per rute supaya berpindah bolak-balik antar
+   * rute tidak memanggil ulang.
+   */
+  useEffect(() => {
+    if (!selected || safePointsByRoute[selected.id]) return;
+
+    let cancelled = false;
+    fetchSafePoints(selected.path).then((points) => {
+      if (cancelled) return;
+      setSafePointsByRoute((prev) => ({
+        ...prev,
+        [selected.id]: sortByDistanceTo(points, destCoords),
+      }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, safePointsByRoute, destCoords]);
 
   /**
    * Meneruskan rute terpilih ke In-Trip Protection.
@@ -186,8 +269,8 @@ export default function SafeRoutePage() {
       originCoords,
       destCoords,
       routePath: routePath.length > 1 ? routePath : [originCoords, destCoords],
-      durationMin: routeInfo?.durationMin ?? 10,
-      distanceKm: routeInfo?.distanceKm ?? '',
+      durationMin: selected?.durationMin ?? 10,
+      distanceKm: selected?.distanceKm ?? '',
       riskSegments: routeRisk?.segments ?? [],
       safePoints,
     });
@@ -347,23 +430,64 @@ export default function SafeRoutePage() {
                   </div>
                 </div>
 
-                {/* B. ROUTE CARD */}
-                {(() => {
-                  const displayRoad =
-                    routeInfo?.viaRoad || `Via Main Route to ${destinationText.split(',')[0]}`;
-                  const displayTimeDist = routeInfo
-                    ? `${routeInfo.durationMin} min (${routeInfo.distanceKm})`
-                    : 'Route estimate unavailable';
+                {/* B. DAFTAR RUTE - satu kartu per rute nyata dari OSRM */}
+                {routes.length > 1 && (
+                  <p className="text-[11px] text-gray-500 -mb-1">
+                    {routes.length} routes found. Tap a card or a grey line on
+                    the map to compare them.
+                  </p>
+                )}
 
+                {routes.map((route, idx) => (() => {
+                  const isSelected = route.id === selected?.id;
+                  const displayRoad = route.viaRoad;
+                  const displayTimeDist = `${route.durationMin} min (${route.distanceKm})`;
+                  const routeRisk = route.risk;
                   const overall = routeRisk?.overall;
+
+                  /** Membungkus kartu agar bisa dipilih dan terlihat terpilih. */
+                  const wrap = (children: React.ReactNode, tone: string) => (
+                    <div
+                      key={route.id}
+                      onClick={() => setSelectedId(route.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedId(route.id);
+                        }
+                      }}
+                      aria-pressed={isSelected}
+                      className={`${tone} border rounded-xl p-4 shadow-sm cursor-pointer transition-all ${
+                        isSelected
+                          ? 'ring-2 ring-[#D91176] ring-offset-1'
+                          : 'opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      {routes.length > 1 && (
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-gray-500">
+                            Option {idx + 1}
+                          </span>
+                          {isSelected && (
+                            <span className="flex items-center gap-1 text-[10px] font-black uppercase text-[#D91176]">
+                              <Check className="w-3 h-3" /> Showing on map
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {children}
+                    </div>
+                  );
 
                   // Tanpa data keamanan, rute TIDAK BOLEH tampil hijau/aman.
                   // Netral (abu-abu) + ajakan berhati-hati. Lihat PRD AC#1 Edge Case.
                   if (!overall || overall.status !== 'ok') {
                     const isError = overall?.status === 'error';
 
-                    return (
-                      <div className="bg-gray-50 border border-gray-300 rounded-xl p-4 shadow-sm">
+                    return wrap(
+                      <>
                         <div className="flex items-center justify-between mb-1">
                           <h4 className="text-sm font-bold text-gray-900">Route Available</h4>
                           <span className="text-[10px] bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full font-extrabold uppercase">
@@ -388,10 +512,13 @@ export default function SafeRoutePage() {
                           </p>
                         </div>
 
-                        <button onClick={startNavigation} className="w-full bg-gray-700 hover:bg-gray-800 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer">
-                          START NAVIGATION
-                        </button>
-                      </div>
+                        {isSelected && (
+                          <button onClick={startNavigation} className="w-full bg-gray-700 hover:bg-gray-800 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer">
+                            START NAVIGATION
+                          </button>
+                        )}
+                      </>,
+                      'bg-gray-50 border-gray-300'
                     );
                   }
 
@@ -403,7 +530,10 @@ export default function SafeRoutePage() {
                   let cardBg = 'bg-[#E2F7E9] border-[#C3E8CE]';
                   let badgeColor = 'text-[#15803D]';
                   let badgeText = `Safe ${safetyPercentage}%`;
-                  let titleText = 'Safe Route (Recommended)';
+                  // "Recommended" hanya untuk kartu teratas: daftar sudah
+                  // diurutkan dari yang paling aman, jadi menyebut dua rute
+                  // sekaligus sebagai rekomendasi menghapus artinya.
+                  let titleText = idx === 0 ? 'Safe Route (Recommended)' : 'Safe Route';
                   let showCaution = false;
                   let btnBg = 'bg-[#16A34A] hover:bg-[#15803D]';
 
@@ -422,8 +552,8 @@ export default function SafeRoutePage() {
                     btnBg = 'bg-rose-600 hover:bg-rose-700';
                   }
 
-                  return (
-                    <div className={`${cardBg} border rounded-xl p-4 flex flex-col justify-between transition-colors shadow-sm`}>
+                  return wrap(
+                    <>
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <h4 className="text-sm font-bold text-gray-900">
@@ -473,12 +603,15 @@ export default function SafeRoutePage() {
                         </p>
                       </div>
 
-                      <button onClick={startNavigation} className={`w-full ${btnBg} text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer`}>
-                        START NAVIGATION
-                      </button>
-                    </div>
+                      {isSelected && (
+                        <button onClick={startNavigation} className={`w-full ${btnBg} text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer`}>
+                          START NAVIGATION
+                        </button>
+                      )}
+                    </>,
+                    cardBg
                   );
-                })()}
+                })())}
 
                 {/* B2. SAFE POINT DI SEKITAR RUTE
                     Sumbernya OpenStreetMap, bukan model Risk Score, jadi
@@ -540,28 +673,12 @@ export default function SafeRoutePage() {
                   )}
                 </div>
 
-                {/* C. FASTEST ROUTE CARD */}
-                <div className="bg-[#FDE8F3] border border-[#F9CBE2] rounded-xl p-4 flex flex-col justify-between">
-                  <div>
-                    <h4 className="text-sm font-bold text-[#831843] mb-1">
-                      Fastest Route
-                    </h4>
-                    <div className="border-b border-black/20 pb-1 mb-2">
-                      <p className="text-sm font-extrabold text-black truncate">
-                        Via {destinationText.split(',')[0]} Alleys
-                      </p>
-                    </div>
-                    <p className="text-sm font-black text-black mb-1">
-                      {routeInfo ? `${Math.max(1, routeInfo.durationMin - 4)} min` : '6 min'} <span className="font-normal">|</span> <span className="text-[#9D174D]">Not assessed</span>
-                    </p>
-                    <p className="text-[11px] text-gray-600 font-medium mb-3">
-                      Shorter route through narrower &amp; quieter streets. Its risk level has not been assessed.
-                    </p>
-                  </div>
-                  <button onClick={startNavigation} className="w-full bg-[#D91176] hover:bg-[#b80d63] text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-colors cursor-pointer">
-                    START NAVIGATION
-                  </button>
-                </div>
+                {/* Kartu "Fastest Route" yang lama dihapus. Isinya dikarang -
+                    durasinya sekadar durasi rute utama dikurangi empat menit
+                    dan nama jalannya dirangkai dari teks tujuan. Rute itu
+                    tidak pernah ada, tidak pernah dinilai, dan tombolnya
+                    menjalankan geometri yang sama persis dengan kartu di
+                    atasnya. Alternatif di atas kini datang dari OSRM. */}
 
                 {/* D. DISCLAIMER DATASET */}
                 <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-xl text-[10px] text-gray-500 leading-relaxed">
@@ -600,6 +717,10 @@ export default function SafeRoutePage() {
             riskSegments={routeRisk?.segments ?? []}
             safePoints={safePoints}
             datetime={toApiDatetime(departureTime)}
+            alternatives={routes
+              .filter((r) => r.id !== selected?.id)
+              .map((r) => ({ id: r.id, path: r.path }))}
+            onSelectAlternative={setSelectedId}
           />
         </div>
 
