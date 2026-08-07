@@ -25,7 +25,7 @@ export async function proxy(request: NextRequest) {
   // Sudah masuk tapi membuka halaman login: antarkan ke tujuan yang benar
   // menurut perannya, jangan biarkan mengisi formulir untuk kedua kalinya.
   if (isPublic && session) {
-    return NextResponse.redirect(new URL(session.role === 'ADMIN' ? '/report' : '/', request.url));
+    return NextResponse.redirect(new URL(session.role === 'ADMIN' ? '/admin' : '/', request.url));
   }
 
   if (isPublic) return NextResponse.next();
@@ -42,6 +42,14 @@ export async function proxy(request: NextRequest) {
   // diketik langsung untuk membaca seluruh laporan insiden.
   if (pathname.startsWith('/admin') && session.role !== 'ADMIN') {
     return NextResponse.redirect(new URL('/', request.url));
+  }
+
+  // Sebaliknya, admin yang membuka aplikasi pengguna dikembalikan ke
+  // panelnya. Akun admin tidak punya kontak darurat maupun perjalanan
+  // sendiri, jadi antarmuka pengguna hanya akan tampil kosong dan
+  // membingungkan - tepat yang terjadi sebelum penjagaan ini ada.
+  if (session.role === 'ADMIN' && !pathname.startsWith('/admin')) {
+    return NextResponse.redirect(new URL('/admin', request.url));
   }
 
   return NextResponse.next();

@@ -42,7 +42,9 @@ function LoginForm() {
 
       // refresh() perlu dipanggil agar komponen server membaca cookie sesi
       // yang baru; tanpa itu halaman tujuan masih memakai render lama.
-      router.replace(data.role === 'ADMIN' ? '/report' : (nextPath ?? '/'));
+      // Admin selalu ke panelnya sendiri, bahkan bila tadi diarahkan dari
+      // halaman lain: alat kerjanya berbeda sama sekali dari aplikasi pengguna.
+      router.replace(data.role === 'ADMIN' ? '/admin' : (nextPath ?? '/'));
       router.refresh();
     } catch {
       setError('Cannot reach the server. Check your connection and try again.');
