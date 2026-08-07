@@ -39,25 +39,48 @@ export default function HeatmapLayer({ enabled, datetime, onStatus }: Props) {
   const [pluginReady, setPluginReady] = useState(false);
 
   /**
-   * leaflet.heat ditulis sebelum era modul: ia menempelkan L.heatLayer pada
-   * variabel global L, bukan mengekspor apa pun. Dengan bundler modern L
-   * hanya ada sebagai modul, sehingga plugin gagal tanpa pesan dan
-   * L.heatLayer tidak pernah muncul.
+   * leaflet.heat ditulis sebelum era modul. Ia tidak mengekspor apa pun dan
+   * menempelkan diri pada variabel `L` yang diasumsikan global.
    *
-   * Karena itu L dipasang ke window lebih dulu, baru plugin dimuat.
+   * Meng-import-nya lewat bundler tidak pernah berhasil: kodenya dijalankan
+   * dalam lingkup modul, sehingga `L` di dalamnya tidak pernah teresolusi ke
+   * window.L - berapa kali pun window.L disetel lebih dulu. Plugin gagal
+   * tanpa pesan apa pun dan L.heatLayer tak pernah muncul.
+   *
+   * Karena itu berkasnya disalin ke /public dan dimuat lewat tag <script>,
+   * yang benar-benar dieksekusi di lingkup global.
    */
   useEffect(() => {
-    let cancelled = false;
-    (window as unknown as { L: typeof L }).L = L;
+    const win = window as unknown as { L: typeof L };
+    win.L = L;
 
-    import('leaflet.heat')
-      .then(() => {
-        if (!cancelled) setPluginReady(true);
-      })
-      .catch((err) => console.error('[heatmap] gagal memuat leaflet.heat:', err));
+    if (typeof (L as unknown as { heatLayer?: unknown }).heatLayer === 'function') {
+      setPluginReady(true);
+      return;
+    }
+
+    const SCRIPT_ID = 'leaflet-heat-plugin';
+    const existing = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null;
+
+    const onLoad = () => setPluginReady(true);
+    const onError = () => console.error('[heatmap] /vendor/leaflet-heat.js gagal dimuat');
+
+    if (existing) {
+      existing.addEventListener('load', onLoad);
+      return () => existing.removeEventListener('load', onLoad);
+    }
+
+    const script = document.createElement('script');
+    script.id = SCRIPT_ID;
+    script.src = '/vendor/leaflet-heat.js';
+    script.async = true;
+    script.addEventListener('load', onLoad);
+    script.addEventListener('error', onError);
+    document.head.appendChild(script);
 
     return () => {
-      cancelled = true;
+      script.removeEventListener('load', onLoad);
+      script.removeEventListener('error', onError);
     };
   }, []);
 

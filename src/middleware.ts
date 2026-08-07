@@ -52,5 +52,11 @@ export const config = {
    * kepemilikannya sendiri, dan /api/auth/* justru harus bisa diakses
    * sebelum sesi ada.
    */
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|assets|.*\\.png$|.*\\.svg$).*)'],
+  matcher: [
+    // Berkas statis harus dikecualikan secara eksplisit. Tanpa itu penjaga
+    // ini juga mencegat skrip dan gambar, lalu mengalihkannya ke /login -
+    // peramban menerima halaman HTML alih-alih berkas yang diminta, dan
+    // kegagalannya sulit dilacak karena tidak ada pesan error yang jelas.
+    '/((?!api|_next/static|_next/image|favicon.ico|assets|vendor|.*\\.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|woff2?)$).*)',
+  ],
 };
