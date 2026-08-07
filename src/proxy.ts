@@ -4,6 +4,9 @@ import { SESSION_COOKIE, readSessionToken } from '@/lib/auth';
 /**
  * Penjaga rute.
  *
+ * Next.js 16 mengganti konvensi "middleware" menjadi "proxy"; berkas dan
+ * nama fungsinya mengikuti nama baru itu, perilakunya sama persis.
+ *
  * Berjalan di edge runtime, jadi keabsahan sesi diperiksa lewat tanda tangan
  * JWT tanpa memanggil basis data sama sekali.
  *
@@ -14,7 +17,7 @@ import { SESSION_COOKIE, readSessionToken } from '@/lib/auth';
 
 const PUBLIC_PAGES = ['/login', '/register'];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const session = await readSessionToken(request.cookies.get(SESSION_COOKIE)?.value);
   const isPublic = PUBLIC_PAGES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
