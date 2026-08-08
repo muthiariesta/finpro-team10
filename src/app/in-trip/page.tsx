@@ -42,6 +42,20 @@ type TransportMode = 'personal' | 'ride';
 /** Tenggang konfirmasi setelah ETA terlewati, sesuai PRD (10 menit). */
 const GRACE_SECONDS = 10 * 60;
 
+/**
+ * Jam tiba bila perjalanan dimulai sekarang.
+ *
+ * Dasarnya durationMin, yang dibawa dari halaman Safe Route dan berasal
+ * dari perhitungan OSRM atas geometri rute - bukan angka yang ditetapkan
+ * di aplikasi ini. Satu-satunya durasi yang memang ditulis tangan adalah
+ * milik FALLBACK_PLAN di bawah, dan itu jelas ditandai sebagai contoh.
+ */
+function etaClock(durationMin: number): string {
+  const at = new Date(Date.now() + durationMin * 60_000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+}
+
 /** Rute contoh bila halaman dibuka langsung tanpa melalui Safe Route. */
 const FALLBACK_PLAN: TripPlan = {
   originLabel: '123 Harmony St',
@@ -63,6 +77,16 @@ const FALLBACK_PLAN: TripPlan = {
 
 export default function InTripPage() {
   const [plan, setPlan] = useState<TripPlan>(FALLBACK_PLAN);
+  /**
+   * true selama rute contoh yang dipakai, bukan hasil pencarian.
+   *
+   * Perlu dibedakan secara terlihat. Sebelum ini, rute yang gagal terbawa
+   * digantikan diam-diam oleh contoh Jakarta, sehingga pengguna yang baru
+   * saja menekan START NAVIGATION pada rute Chicago mendapati asal dan
+   * tujuan yang sama sekali lain - dan wajar menyimpulkan kedua halaman
+   * ini tidak terhubung.
+   */
+  const [isDemoPlan, setIsDemoPlan] = useState(true);
   const [phase, setPhase] = useState<Phase>('setup');
   const [mode, setMode] = useState<TransportMode>('personal');
   const [driver, setDriver] = useState({ name: '', plate: '', phone: '' });
@@ -78,7 +102,10 @@ export default function InTripPage() {
   // Rute diambil dari sesi yang disimpan halaman Safe Route.
   useEffect(() => {
     const saved = loadTripPlan();
-    if (saved && saved.routePath?.length > 1) setPlan(saved);
+    if (saved && saved.routePath?.length > 1) {
+      setPlan(saved);
+      setIsDemoPlan(false);
+    }
   }, []);
 
   // Satu pengatur waktu menggerakkan hitung mundur, kemajuan, dan posisi
@@ -176,6 +203,7 @@ export default function InTripPage() {
           {phase === 'setup' && (
             <SetupPanel
               plan={plan}
+              isDemoPlan={isDemoPlan}
               mode={mode}
               setMode={setMode}
               driver={driver}
@@ -224,6 +252,7 @@ export default function InTripPage() {
 
 function SetupPanel({
   plan,
+  isDemoPlan,
   mode,
   setMode,
   driver,
@@ -231,6 +260,7 @@ function SetupPanel({
   onStart,
 }: {
   plan: TripPlan;
+  isDemoPlan: boolean;
   mode: TransportMode;
   setMode: (m: TransportMode) => void;
   driver: { name: string; plate: string; phone: string };
@@ -250,24 +280,44 @@ function SetupPanel({
         detail broadcasting.
       </p>
 
-      {/* Rute terpilih */}
-      <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 mb-4">
+      {/* Rute terpilih.
+          Warnanya mengikuti asal rute: hijau bila benar-benar dibawa dari
+          hasil pencarian, kuning bila ini sekadar contoh. Menyamakan
+          keduanya membuat rute contoh tampak seperti rencana sungguhan. */}
+      <div
+        className={`border rounded-xl p-3.5 mb-4 ${
+          isDemoPlan
+            ? 'bg-amber-50 border-amber-200'
+            : 'bg-emerald-50/70 border-emerald-200'
+        }`}
+      >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-0.5">
-              Selected Path
+            <p
+              className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${
+                isDemoPlan ? 'text-amber-800' : 'text-emerald-800'
+              }`}
+            >
+              {isDemoPlan ? 'Example route' : 'Selected Path'}
             </p>
-            <p className="text-sm font-bold text-gray-900">
-              Safest Route ({plan.durationMin} mins)
-            </p>
-            <p className="text-xs text-gray-600 truncate">
+            <p className="text-xs text-gray-700 truncate font-semibold">
               {plan.originLabel} &rarr; {plan.destinationLabel}
             </p>
+            <p className="text-xs text-gray-600">
+              {plan.durationMin} min
+              {plan.distanceKm ? ` • ${plan.distanceKm}` : ''} • arriving around{' '}
+              {etaClock(plan.durationMin)}
+            </p>
           </div>
-          <span className="shrink-0 text-[11px] font-bold text-emerald-800 bg-white border border-emerald-200 px-2 py-0.5 rounded-full">
-            {plan.durationMin} mins
-          </span>
         </div>
+
+        {isDemoPlan && (
+          <p className="text-[10px] text-amber-800 leading-snug mt-2 pt-2 border-t border-amber-200">
+            You opened this page directly, so a sample route is shown. To track
+            a real trip, search a route on the Safe Route page first and press
+            START NAVIGATION there.
+          </p>
+        )}
       </div>
 
       {/* Moda transportasi */}
