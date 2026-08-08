@@ -1,27 +1,29 @@
 # SafeHer — Frontend
 
-Women's safety web app: plan a route with a risk assessment attached, keep a
-guardian watching while you travel, and report incidents anonymously.
+Aplikasi web keselamatan perempuan: merencanakan rute lengkap dengan penilaian
+risikonya, menjaga perjalanan tetap terpantau orang terdekat, dan melaporkan
+kejadian secara anonim.
 
-SISTECH 2026 final project · Team 10 · Next.js frontend.
-The machine-learning service lives in a separate repository
+Final project SISTECH 2026 · Tim 10 · frontend Next.js.
+Layanan machine learning-nya berada di repositori terpisah
 ([RiskScore-API](https://riskscore-api.onrender.com/docs)).
 
 ---
 
-## The one thing to understand first
+## Hal pertama yang perlu dipahami
 
-The risk model is trained on the **Chicago Open Data** crime dataset. Every
-coordinate outside that dataset — all of Indonesia included — returns
+Model risikonya dilatih dengan dataset kriminal **Chicago Open Data**. Setiap
+koordinat di luar dataset itu — termasuk seluruh Indonesia — dijawab
 `match_type: "no_data"`.
 
-The API answers `no_data` with `risk_score: 0.0` and `level: "Low"`. Rendered
-literally, Jakarta would appear as a green **"Safe 100%"** route. On a safety
-product that is not a cosmetic bug: it invents reassurance where there is no
-evidence.
+Untuk `no_data`, API mengembalikan `risk_score: 0.0` dan `level: "Low"`.
+Ditampilkan apa adanya, Jakarta akan tampil sebagai rute hijau **"Safe 100%"**.
+Pada produk keselamatan itu bukan sekadar salah tampilan: aplikasi mengarang
+rasa aman yang tidak ada buktinya.
 
-So the client never exposes a raw level. `fetchRiskScore()` returns a
-discriminated union that makes the unsafe states impossible to ignore:
+Karena itu klien tidak pernah menampilkan level mentah. `fetchRiskScore()`
+mengembalikan discriminated union yang membuat keadaan berbahaya mustahil
+diabaikan:
 
 ```ts
 type RiskResult =
@@ -30,154 +32,162 @@ type RiskResult =
   | { status: 'error';   message: string }
 ```
 
-TypeScript will not let a caller read `.score` without first narrowing
-`status`. That single decision is why "no data" shows up as a grey **"Not
-scored"** card everywhere instead of a green one, and it shapes most of the UI
-below.
+TypeScript tidak mengizinkan pemanggil membaca `.score` sebelum mempersempit
+`status` lebih dulu. Satu keputusan itulah sebabnya "tidak ada data" selalu
+muncul sebagai kartu abu-abu **"Not scored"**, bukan kartu hijau — dan itu pula
+yang membentuk sebagian besar antarmuka di bawah.
 
-Three rules follow from it, applied throughout:
+Tiga aturan turunannya, dipakai konsisten di seluruh aplikasi:
 
-- **A route's score is its worst segment, not its average.** One dangerous
-  stretch does not become safe because the rest of the trip is calm.
-- **Unknown is its own state.** Safe points show `OPEN` / `CLOSED` /
-  `HOURS N/A` — never two states where the third is quietly folded into "open".
-- **Human judgement is labelled as such.** Admin-assessed areas render
+- **Skor sebuah rute diambil dari segmen terburuknya, bukan rata-rata.** Satu
+  ruas berbahaya tidak menjadi aman hanya karena sisa perjalanannya tenang.
+- **"Tidak diketahui" adalah keadaan tersendiri.** Safe point menampilkan
+  `OPEN` / `CLOSED` / `HOURS N/A` — bukan dua keadaan dengan yang ketiga
+  diam-diam dihitung sebagai "buka".
+- **Penilaian manusia diberi label.** Wilayah yang dinilai admin tampil sebagai
   *"Assessed by SafeHer, not by the historical model."*
 
 ---
 
 ## Tech stack
 
-| Layer | Choice | Why |
+| Lapisan | Pilihan | Alasan |
 |---|---|---|
-| Framework | Next.js 16 (App Router, Turbopack) | Server components for admin pages, route handlers as the API layer |
-| Language | TypeScript 5 | The `RiskResult` union only works if the compiler enforces it |
-| UI | Tailwind CSS 4, lucide-react | Utility styling; one icon set across DOM *and* Leaflet markers |
-| Maps | Leaflet 1.9 + react-leaflet 5, leaflet.heat | Open source, no API key, no per-tile billing |
-| Database | Neon Postgres via Prisma 7 (`@prisma/adapter-neon`) | Serverless driver over HTTP — no connection pool to exhaust on Vercel |
-| Auth | `jose` (JWT) + bcryptjs, httpOnly cookie | `jose` runs on the edge runtime, so `proxy.ts` can verify sessions |
-| Files | Vercel Blob | Evidence uploads |
-| Hosting | Vercel (app) + Render (ML API) | Both free tiers |
+| Framework | Next.js 16 (App Router, Turbopack) | Server component untuk halaman admin, route handler sebagai lapisan API |
+| Bahasa | TypeScript 5 | Union `RiskResult` hanya berguna kalau dipaksakan compiler |
+| UI | Tailwind CSS 4, lucide-react | Utility styling; satu set ikon untuk DOM *dan* marker Leaflet |
+| Peta | Leaflet 1.9 + react-leaflet 5, leaflet.heat | Open source, tanpa API key, tanpa biaya per tile |
+| Database | Neon Postgres via Prisma 7 (`@prisma/adapter-neon`) | Driver serverless lewat HTTP — tidak ada connection pool yang habis di Vercel |
+| Autentikasi | `jose` (JWT) + bcryptjs, cookie httpOnly | `jose` jalan di edge runtime, sehingga `proxy.ts` bisa memverifikasi sesi |
+| Berkas | Vercel Blob | Unggahan bukti laporan |
+| Hosting | Vercel (aplikasi) + Render (API ML) | Keduanya free tier |
 
-### External services (no keys required)
+### Layanan luar (tanpa API key)
 
-| Service | Used for |
+| Layanan | Dipakai untuk |
 |---|---|
-| [OSRM](https://project-osrm.org/) | Road geometry, duration, alternative routes |
+| [OSRM](https://project-osrm.org/) | Geometri jalan, durasi, rute alternatif |
 | [Nominatim](https://nominatim.org/) | Geocoding, autocomplete, reverse geocoding |
-| [Overpass](https://overpass-api.de/) | Safe points from OpenStreetMap |
-| RiskScore API | Risk scores (own team, FastAPI on Render) |
+| [Overpass](https://overpass-api.de/) | Safe point dari OpenStreetMap |
+| RiskScore API | Skor risiko (buatan tim sendiri, FastAPI di Render) |
 
 ---
 
-## Features
+## Fitur
 
-**Safe Route** (`/`) — Enter origin and destination, pick a departure hour.
-OSRM returns up to three real alternatives; each is sampled at several points
-and scored independently. Cards are selectable and the map redraws — unselected
-routes stay visible as grey lines you can click. Routes are ordered by safety,
-and an unscored route never outranks a scored one.
+**Safe Route** (`/`) — Isi asal dan tujuan, pilih jam berangkat. OSRM
+mengembalikan sampai tiga alternatif nyata; masing-masing dinilai di beberapa
+titik secara terpisah. Kartunya bisa dipilih dan peta ikut berubah — rute yang
+tidak dipilih tetap terlihat sebagai garis abu-abu yang bisa diklik. Urutannya
+mengikuti keamanan, dan rute tanpa data tidak pernah menyalip rute yang sudah
+dinilai.
 
-**Risk heatmap** — Grid-samples the visible viewport and paints scored cells.
-Areas outside the dataset stay blank; that emptiness is the honest answer.
+**Heatmap risiko** — Mengambil sampel grid pada area yang terlihat lalu
+mewarnai sel yang punya skor. Wilayah di luar dataset dibiarkan polos; kekosongan
+itu justru jawaban yang jujur.
 
-**Safe points** — Police, hospitals, pharmacies, fuel and convenience stores
-along the route, from OpenStreetMap. Evaluated against your **estimated
-arrival** (departure + OSRM duration), not departure — a place that closes
-before you get there is not a refuge. `opening_hours` is parsed for the common
-forms including ranges past midnight; anything unrecognised reports
-`HOURS N/A` rather than guessing.
+**Safe point** — Pos polisi, rumah sakit, apotek, SPBU, dan minimarket di
+sekitar rute, dari OpenStreetMap. Dinilai terhadap **perkiraan waktu tiba**
+(jam berangkat + durasi OSRM), bukan waktu berangkat — tempat yang tutup
+sebelum kita sampai bukan tempat berlindung. Tag `opening_hours` diurai untuk
+bentuk-bentuk umum termasuk yang melewati tengah malam; yang tidak dikenali
+dilaporkan `HOURS N/A`, bukan ditebak.
 
-**In-Trip Protection** (`/in-trip`) — Live GPS tracking against the planned
-route with an ETA countdown. If the ETA passes with no confirmation, a
-10-minute grace timer runs, then guardians are alerted. Falls back to simulated
-movement along the path when GPS is unavailable, and says so.
+**In-Trip Protection** (`/in-trip`) — Pelacakan GPS langsung terhadap rute yang
+direncanakan, dengan hitung mundur ETA. Bila ETA terlewat tanpa konfirmasi,
+tenggang 10 menit berjalan, lalu kontak darurat dihubungi. Bila GPS tidak
+tersedia, pergerakan disimulasikan sepanjang rute — dan itu dinyatakan.
 
-**SOS** (`SosButton`) — Three-second hold to arm, so a pocket brush cannot fire
-it. Sends location and guardian details via WhatsApp/SMS.
+**SOS** (`SosButton`) — Ditahan tiga detik untuk aktif, supaya tidak menyala
+karena tersenggol di dalam tas. Mengirim lokasi dan detail perjalanan ke
+kontak darurat.
 
-**Report an incident** (`/report/new`) — Anonymous, ownership held by a token.
-Location can come from device GPS, a draggable map pin, or plain typing; the
-source is stored so admins know how precise it is. Up to five attachments.
+**Lapor kejadian** (`/report/new`) — Anonim, kepemilikan ditandai token. Lokasi
+bisa dari GPS perangkat, pin peta yang digeser, atau diketik langsung; asal
+koordinatnya disimpan agar admin tahu seberapa teliti. Maksimal lima lampiran.
 
-**Emergency contacts** (`/emergency`) — Guardians with per-contact channel
-preferences.
+**Kontak darurat** (`/emergency`) — Daftar guardian beserta pilihan kanal
+pengiriman per kontak.
 
-**Admin panel** (`/admin`) — Review queue, published feed, safe-point registry,
-and the risk-area table that fills the Indonesia data gap.
-
----
-
-## Safety and privacy decisions
-
-These are deliberate; please do not "simplify" them away.
-
-- **`ownerToken` never leaves the server.** It is the only proof of ownership
-  for an anonymous report, so no query selects it into a response.
-- **Only `VERIFIED` reports reach the public feed.** Unreviewed reports must
-  not shape how people see a neighbourhood.
-- **Login errors are identical** for an unknown account and a wrong password —
-  otherwise the form becomes an account-existence oracle.
-- **SOS states when it is simulated.** Without `FONNTE_TOKEN` the endpoint
-  returns `simulated: true` and the UI must say so. Claiming "sent to 2
-  contacts" when nothing was sent could stop someone from seeking other help.
-- **Deleting a report deletes every attachment**, not just the first.
+**Panel admin** (`/admin`) — Antrean verifikasi, feed publik, daftar safe point,
+dan tabel risk area yang menutup celah data Indonesia.
 
 ---
 
-## Getting started
+## Keputusan soal keselamatan & privasi
+
+Ini semua disengaja — mohon jangan "disederhanakan".
+
+- **`ownerToken` tidak pernah keluar dari server.** Token itu satu-satunya
+  bukti kepemilikan laporan anonim, jadi tidak ada query yang menyertakannya
+  ke dalam respons.
+- **Hanya laporan `VERIFIED` yang masuk feed publik.** Laporan yang belum
+  diperiksa tidak boleh ikut membentuk persepsi orang tentang suatu wilayah.
+- **Pesan galat login dibuat sama persis** untuk akun tidak dikenal maupun
+  sandi salah — kalau dibedakan, formulirnya berubah jadi alat penebak akun.
+- **SOS menyatakan bila hanya simulasi.** Tanpa `FONNTE_TOKEN`, endpoint
+  mengembalikan `simulated: true` dan antarmuka wajib mengatakannya. Menulis
+  "terkirim ke 2 kontak" padahal tidak ada yang terkirim bisa membuat orang
+  berhenti mencari pertolongan lain.
+- **Menghapus laporan menghapus semua lampirannya**, bukan hanya yang pertama.
+
+---
+
+## Menjalankan proyek
 
 ```bash
 git clone <repo-url> && cd finpro-team10
-npm install                  # postinstall runs `prisma generate`
-cp .env.example .env.local   # then fill it in — see below
-npx prisma db push           # create the tables
-npx tsx prisma/seed.ts       # demo accounts
+npm install                  # postinstall menjalankan `prisma generate`
+cp .env.example .env.local   # lalu isi nilainya — lihat di bawah
+npx prisma db push           # membuat tabel
+npx tsx prisma/seed.ts       # akun demo
 npm run dev
 ```
 
-Open <http://localhost:3000>. Login is the entry point; `proxy.ts` redirects
-anonymous visitors there.
+Buka <http://localhost:3000>. Halaman pertama adalah login; `proxy.ts`
+mengarahkan pengunjung yang belum masuk ke sana.
 
-### Demo accounts
+### Akun demo
 
-| Role | Identifier | Password |
+| Peran | Identifier | Kata sandi |
 |---|---|---|
 | User | `user@safeher.org` | `safeher123` |
 | Admin | `admin@safeher.org` | `admin123456` |
 
-Admins land on `/admin` and are kept out of the user app — an admin account has
-no guardians or trips, so those pages would render empty.
+Admin mendarat di `/admin` dan tidak bisa masuk ke aplikasi pengguna — akun
+admin tidak punya kontak darurat maupun perjalanan, jadi halaman itu hanya akan
+tampil kosong.
 
 ### Environment
 
-| Variable | Required | Without it |
+| Variabel | Wajib | Bila tidak diisi |
 |---|---|---|
-| `DATABASE_URL` | yes | App throws at startup with a message naming the cause |
-| `AUTH_SECRET` | yes | App refuses to start (≥16 chars; anyone holding it can forge admin sessions) |
-| `NEXT_PUBLIC_RISK_API_URL` | yes | Falls back to `http://localhost:8000` |
-| `BLOB_READ_WRITE_TOKEN` | no | Evidence upload fails; reports still submit without files |
-| `FONNTE_TOKEN` | no | SOS reports itself as simulated |
+| `DATABASE_URL` | ya | Aplikasi berhenti saat mulai, dengan pesan yang menyebut penyebabnya |
+| `AUTH_SECRET` | ya | Aplikasi menolak jalan (min. 16 karakter; pemegangnya bisa membuat sesi admin sendiri) |
+| `NEXT_PUBLIC_RISK_API_URL` | ya | Menembak `http://localhost:8000` |
+| `BLOB_READ_WRITE_TOKEN` | tidak | Unggah bukti gagal; laporan tanpa berkas tetap terkirim |
+| `FONNTE_TOKEN` | tidak | SOS melaporkan dirinya sebagai simulasi |
 
-Generate a secret:
+Membuat secret:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-> **Windows:** File Explorer hides extensions, so a file saved as
-> `.env.local.txt` looks correct and silently does nothing.
+> **Windows:** File Explorer menyembunyikan ekstensi, jadi berkas yang tersimpan
+> sebagai `.env.local.txt` terlihat benar padahal tidak terbaca sama sekali.
 
 ---
 
-## Using the RiskScore API
+## Cara memakai RiskScore API
 
-The browser never calls the ML service directly. It calls
-`/api/risk-score`, a route handler that reads `NEXT_PUBLIC_RISK_API_URL`
-server-side — so there is no CORS, no upstream URL inlined into the bundle,
-and one place to change when the model moves.
+Peramban tidak pernah memanggil layanan ML secara langsung, melainkan lewat
+`/api/risk-score` — route handler yang membaca `NEXT_PUBLIC_RISK_API_URL` di
+sisi server. Dengan begitu tidak ada CORS, tidak ada URL upstream yang ikut
+masuk ke bundle, dan hanya ada satu tempat yang perlu diubah bila modelnya
+pindah.
 
-### Direct call
+### Panggilan langsung
 
 ```
 GET https://riskscore-api.onrender.com/risk-score
@@ -196,116 +206,121 @@ GET https://riskscore-api.onrender.com/risk-score
 }
 ```
 
-`datetime` is ISO 8601 **without a timezone**. Use local components, not
-`toISOString()` — otherwise a 21:30 departure is scored as mid-afternoon UTC.
-`toApiDatetime()` in `src/lib/riskApi.ts` handles this.
+`datetime` memakai ISO 8601 **tanpa timezone**. Gunakan komponen waktu lokal,
+bukan `toISOString()` — kalau tidak, keberangkatan 21:30 akan dinilai sebagai
+siang hari waktu UTC. Fungsi `toApiDatetime()` di `src/lib/riskApi.ts` sudah
+menanganinya.
 
-The hour matters. The API filters crime history by `(day_of_week, hour)`
-before predicting, and feeds `hour_sin/cos` to the model — so the same street
-scores differently at 08:00 and 02:00.
+Jamnya berpengaruh nyata. API menyaring riwayat kejahatan menurut
+`(day_of_week, hour)` sebelum memprediksi, sekaligus memberi `hour_sin/cos`
+sebagai fitur — sehingga jalan yang sama mendapat skor berbeda pada 08:00 dan
+02:00.
 
-### From the app
+### Dari dalam aplikasi
 
 ```ts
 import { fetchRouteRisk, fetchRiskAreas, toApiDatetime } from '@/lib/riskApi';
 
-const areas = await fetchRiskAreas();               // admin fallback assessments
+const areas = await fetchRiskAreas();               // penilaian cadangan dari admin
 const risk  = await fetchRouteRisk(
-  path,                                             // LatLng[] from OSRM
+  path,                                             // LatLng[] dari OSRM
   toApiDatetime('21:30'),
-  6,                                                // sample points
+  6,                                                // jumlah titik sampel
   areas
 );
 
 if (risk.overall.status === 'ok') {
   console.log(risk.overall.level, risk.overall.source);
-} // else: 'no_data' or 'error' — must be handled, never rendered as safe
+} // selain itu: 'no_data' atau 'error' — wajib ditangani, jangan pernah
+  // ditampilkan sebagai aman
 ```
 
-`fetchRouteRisk` scores points **sequentially, on purpose**. Firing them in
-parallel triggers simultaneous DNS lookups that fail together on Windows
-(`getaddrinfo ENOTFOUND`). Once the server is warm a point costs ~12 ms, so six
-points still finish well under a second.
+`fetchRouteRisk` menilai titik **secara berurutan, dan itu disengaja.**
+Mengirimnya serentak memicu beberapa lookup DNS bersamaan yang gagal berjamaah
+di Windows (`getaddrinfo ENOTFOUND`). Setelah server hangat, satu titik hanya
+~12 ms, jadi enam titik pun masih jauh di bawah satu detik.
 
-> **Render free tier sleeps after ~15 minutes idle.** The first request takes
-> roughly 50 seconds while it wakes. Timeouts are set to 90–100 s and the UI
-> explains the wait. Hit `/health` before a demo to warm it up.
+> **Render free tier tidur setelah ~15 menit menganggur.** Permintaan pertama
+> butuh sekitar 50 detik untuk membangunkannya. Timeout disetel 90–100 detik
+> dan antarmuka menjelaskan penantian itu. Panggil `/health` sebelum demo
+> untuk memanaskannya.
 
 ---
 
-## Reusable pieces
+## Bagian yang bisa dipakai ulang
 
-Self-contained and free of SafeHer-specific assumptions:
+Berdiri sendiri, tanpa asumsi khusus SafeHer:
 
-| Module | What it does |
+| Modul | Fungsinya |
 |---|---|
-| `lib/openingHours.ts` | Parses OSM `opening_hours` → `'open' \| 'closed' \| 'unknown'`. Handles day ranges, multiple windows, past-midnight, `off`. Returns `unknown` on anything unrecognised instead of guessing. |
-| `components/LocationInput.tsx` | Nominatim autocomplete. Renders through a portal with fixed positioning, so no ancestor `overflow` can clip the dropdown. |
-| `components/IncidentLocationPicker.tsx` | GPS + draggable map pin + free text, with reverse geocoding. |
-| `components/DateTimePicker.tsx` | Custom calendar; no dependency, no native styling. |
-| `components/HeatmapLayer.tsx` | react-leaflet wrapper for `leaflet.heat`. |
-| `lib/trip.ts` | Trip session in `sessionStorage`, plus `pointAlongPath()` for interpolating along a polyline. |
-| `components/admin/AdminCard.tsx` | `AdminCard` / `AdminTable` shells with empty states. |
+| `lib/openingHours.ts` | Mengurai `opening_hours` OSM → `'open' \| 'closed' \| 'unknown'`. Menangani rentang hari, beberapa jendela waktu, lewat tengah malam, dan `off`. Mengembalikan `unknown` untuk apa pun yang tidak dikenali, bukan menebak. |
+| `components/LocationInput.tsx` | Autocomplete Nominatim. Dirender lewat portal dengan posisi fixed, sehingga tidak ada `overflow` induk yang bisa memotong dropdown-nya. |
+| `components/IncidentLocationPicker.tsx` | GPS + pin peta yang bisa digeser + ketik bebas, lengkap dengan reverse geocoding. |
+| `components/DateTimePicker.tsx` | Kalender sendiri; tanpa dependensi, tanpa tampilan bawaan peramban. |
+| `components/HeatmapLayer.tsx` | Pembungkus react-leaflet untuk `leaflet.heat`. |
+| `lib/trip.ts` | Sesi perjalanan di `sessionStorage`, plus `pointAlongPath()` untuk interpolasi sepanjang polyline. |
+| `components/admin/AdminCard.tsx` | Kerangka `AdminCard` / `AdminTable` beserta keadaan kosongnya. |
 
-**A note on `leaflet.heat`:** it predates modules — it exports nothing and
-attaches to a global `L`. Importing it through the bundler silently fails, no
-matter how early you set `window.L`, because module scope never resolves to it.
-The file is therefore copied to `public/vendor/` and loaded via a `<script>`
-tag. If the heatmap ever goes blank, check that `proxy.ts` is not redirecting
-`/vendor/*` to `/login`.
+**Catatan soal `leaflet.heat`:** pustaka ini lahir sebelum era modul — tidak
+mengekspor apa pun dan menempel pada variabel global `L`. Mengimpornya lewat
+bundler selalu gagal tanpa pesan, seberapa awal pun `window.L` disetel, karena
+lingkup modul tidak pernah teresolusi ke sana. Karena itu berkasnya disalin ke
+`public/vendor/` dan dimuat lewat tag `<script>`. Kalau suatu saat heatmap-nya
+kosong, periksa apakah `proxy.ts` sedang mengalihkan `/vendor/*` ke `/login`.
 
 ---
 
-## Project layout
+## Struktur proyek
 
 ```
 src/
 ├── app/
-│   ├── page.tsx              Safe Route (home)
-│   ├── report/               Report list · /new  submission form
-│   ├── emergency/            Guardians + SOS
-│   ├── in-trip/              Live tracking
+│   ├── page.tsx              Safe Route (beranda)
+│   ├── report/               Daftar laporan · /new  formulir pengiriman
+│   ├── emergency/            Guardian + SOS
+│   ├── in-trip/              Pelacakan langsung
 │   ├── login/ · register/
 │   ├── admin/                Review · public-feed · safe-points · risk-areas
-│   └── api/                  Route handlers (see below)
-├── components/               Shared UI · admin/  admin-only
-├── lib/                      Domain logic, no JSX
-├── generated/prisma/         Prisma client (generated — do not edit)
-└── proxy.ts                  Route guarding by role
+│   └── api/                  Route handler (lihat di bawah)
+├── components/               UI bersama · admin/  khusus admin
+├── lib/                      Logika domain, tanpa JSX
+├── generated/prisma/         Klien Prisma (hasil generate — jangan diubah)
+└── proxy.ts                  Penjagaan rute berdasarkan peran
 ```
 
-`proxy.ts` is Next.js 16's replacement for `middleware.ts`. Its matcher must
-keep excluding static assets, or files under `public/` get redirected to
-`/login`.
+`proxy.ts` adalah pengganti `middleware.ts` di Next.js 16. Matcher-nya harus
+tetap mengecualikan aset statis, kalau tidak berkas di `public/` ikut
+dialihkan ke `/login`.
 
-### API routes
+### Route API
 
-| Route | Purpose |
+| Route | Kegunaan |
 |---|---|
-| `GET  /api/risk-score` | Proxy to the ML service |
-| `POST /api/risk-grid` | Grid sampling for the heatmap |
-| `POST /api/safe-points` | Overpass proxy |
-| `GET POST /api/reports` · `PATCH DELETE /api/reports/[id]` · `GET /api/reports/mine` | Incident reports |
-| `GET POST /api/guardians` · `DELETE /api/guardians/[id]` | Emergency contacts |
-| `POST /api/sos` | Alert dispatch |
-| `/api/auth/login · register · logout · me` | Sessions |
-| `/api/admin/*` | Admin operations, guarded by `requireAdmin()` |
+| `GET  /api/risk-score` | Proxy ke layanan ML |
+| `POST /api/risk-grid` | Pengambilan sampel grid untuk heatmap |
+| `POST /api/safe-points` | Proxy Overpass |
+| `GET POST /api/reports` · `PATCH DELETE /api/reports/[id]` · `GET /api/reports/mine` | Laporan kejadian |
+| `GET POST /api/guardians` · `DELETE /api/guardians/[id]` | Kontak darurat |
+| `POST /api/sos` | Pengiriman peringatan |
+| `/api/auth/login · register · logout · me` | Sesi |
+| `/api/admin/*` | Operasi admin, dijaga `requireAdmin()` |
 
-Middleware skips `/api`, so **every admin route calls `requireAdmin()`
-itself.** Do not rely on `proxy.ts` for API authorisation.
+Middleware melewati `/api`, jadi **setiap route admin memanggil
+`requireAdmin()` sendiri.** Jangan mengandalkan `proxy.ts` untuk otorisasi API.
 
 ---
 
-## Notes for the team
+## Catatan untuk tim
 
-- Code comments are in Indonesian; user-facing copy is in English.
-- Comments explain *why*, especially where the obvious approach was tried and
-  failed. The Overpass handler documents which query shapes get rejected; the
-  sequential scoring loop documents the DNS failure. Deleting those comments
-  invites the same day of debugging again.
-- After changing `prisma/schema.prisma`: `npx prisma db push && npx prisma generate`,
-  then **restart the dev server** — a server started before generation holds a
-  stale client and reports models as `undefined`.
-- Run `npx tsc --noEmit` and `npm run build` before pushing. The build catches
-  what dev mode does not, such as `useSearchParams` outside a `Suspense`
-  boundary.
+- Komentar kode berbahasa Indonesia; teks yang dilihat pengguna berbahasa
+  Inggris.
+- Komentar menjelaskan *kenapa*, terutama di tempat yang cara wajarnya sudah
+  dicoba dan gagal. Handler Overpass mencatat bentuk query mana saja yang
+  ditolak; loop penilaian berurutan mencatat kegagalan DNS-nya. Menghapus
+  komentar itu berarti mengundang hari debugging yang sama terulang.
+- Setelah mengubah `prisma/schema.prisma`: `npx prisma db push && npx prisma generate`,
+  lalu **jalankan ulang dev server** — server yang dimulai sebelum generate
+  memegang klien lama dan melaporkan model sebagai `undefined`.
+- Jalankan `npx tsc --noEmit` dan `npm run build` sebelum push. Build menangkap
+  hal yang tidak terlihat di mode dev, misalnya `useSearchParams` di luar batas
+  `Suspense`.
