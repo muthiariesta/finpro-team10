@@ -5,6 +5,7 @@ import {
   Calendar,
   Check,
   ChevronDown,
+  Clock,
   FileText,
   Loader2,
   MapPin,
@@ -19,6 +20,7 @@ import {
   categoryStyle,
   attachmentsOf,
   formatTimestamp,
+  STATUS_HINTS,
   STATUS_LABELS,
   STATUS_STYLES,
   referenceCode,
@@ -66,6 +68,11 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
     const owned: Record<string, string> = JSON.parse(
       localStorage.getItem('my-reports') || '{}'
     );
+    // Aturan lint menganjurkan menghindari setState di dalam effect, tetapi
+    // di sini justru itu yang benar: localStorage tidak ada saat render di
+    // server, dan membacanya lebih awal akan membuat hasil render server
+    // berbeda dari klien (hydration mismatch).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMyReports(owned);
 
     const tokens = Object.values(owned);
@@ -108,7 +115,30 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
     [items, myReports]
   );
 
-  const visible = tab === 'mine' ? items.filter((i) => myReports[i.id]) : items;
+  /**
+   * Tab "All Reports" hanya memuat laporan terverifikasi.
+   *
+   * Penyaringan ini perlu dilakukan lagi di sini, meski kueri server sudah
+   * menyaringnya. Laporan milik sendiri diambil terpisah lengkap dengan yang
+   * masih menunggu, lalu digabungkan ke daftar yang sama - tanpa saringan ini
+   * laporan sendiri yang belum diperiksa ikut muncul di tab publik, dan
+   * pelapor wajar menyimpulkan laporannya sudah tayang untuk semua orang.
+   */
+  const visible =
+    tab === 'mine'
+      ? items.filter((i) => myReports[i.id])
+      : items.filter((i) => i.status === 'VERIFIED');
+
+  const publicCount = useMemo(
+    () => items.filter((i) => i.status === 'VERIFIED').length,
+    [items]
+  );
+
+  /** Laporan sendiri yang masih menunggu; dipakai untuk penunjuk di tab All. */
+  const myPendingCount = useMemo(
+    () => items.filter((i) => myReports[i.id] && i.status === 'PENDING').length,
+    [items, myReports]
+  );
 
   const persistMyReports = (next: Record<string, string>) => {
     setMyReports(next);
@@ -209,7 +239,7 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
       {/* Tab pemisah antara seluruh laporan komunitas dan milik sendiri */}
       <div className="flex items-center gap-1 mb-4 bg-neutral-100 p-1 rounded-xl w-fit">
         {([
-          ['all', 'All Reports', items.length],
+          ['all', 'All Reports', publicCount],
           ['mine', 'My Reports', mineCount],
         ] as const).map(([value, label, count]) => (
           <button
@@ -227,6 +257,36 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
           </button>
         ))}
       </div>
+
+      {/* Tanpa keterangan ini, pelapor yang baru saja mengirim laporan lalu
+          tidak menemukannya di sini akan mengira laporannya gagal terkirim -
+          padahal laporan itu memang sedang menunggu diperiksa. */}
+      {tab === 'all' && myPendingCount > 0 && (
+        <div className="mb-4 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          <Clock className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+          <p className="text-xs text-amber-900 leading-snug">
+            {myPendingCount === 1
+              ? 'One of your reports is waiting for review'
+              : `${myPendingCount} of your reports are waiting for review`}{' '}
+            and is not shown here yet. Reports appear in this list once an admin
+            verifies them.{' '}
+            <button
+              type="button"
+              onClick={() => setTab('mine')}
+              className="font-bold underline hover:no-underline"
+            >
+              See it in My Reports
+            </button>
+          </p>
+        </div>
+      )}
+
+      {tab === 'all' && (
+        <p className="text-[11px] text-neutral-500 mb-3">
+          Showing verified reports only. Unverified reports are hidden so that
+          unchecked claims do not shape how people see an area.
+        </p>
+      )}
 
       {visible.length === 0 ? (
         <div className="w-full bg-white rounded-2xl border border-dashed border-pink-700/30 p-12 flex flex-col items-center gap-3 text-center">
@@ -261,13 +321,15 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
                         <CategoryIcon className="w-3.5 h-3.5" />
                         {categoryLabel(incident.category)}
                       </span>
-                      {/* Status belum tersimpan di basis data; selama alur
-                          peninjauan admin belum ada, semua laporan memang
-                          berstatus menunggu. */}
+                      {/* Status sungguhan dari basis data. Sebelumnya nilai
+                          ini dipatok 'pending' untuk semua laporan, sehingga
+                          laporan yang sudah diverifikasi pun tetap tampak
+                          menunggu. */}
                       <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_STYLES.pending}`}
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_STYLES[incident.status]}`}
+                        title={STATUS_HINTS[incident.status]}
                       >
-                        {STATUS_LABELS.pending}
+                        {STATUS_LABELS[incident.status]}
                       </span>
                       <span className="text-neutral-500 text-xs font-medium flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5" />
@@ -283,6 +345,22 @@ export default function ReportList({ incidents }: { incidents: IncidentItem[] })
                     </p>
                     {incident.description && (
                       <p className="text-neutral-600 text-sm">{incident.description}</p>
+                    )}
+
+                    {/* Arti statusnya dieja, hanya untuk pemiliknya. Badge
+                        sendiri terlalu singkat untuk menjawab pertanyaan yang
+                        sebenarnya: "laporan saya sudah kelihatan orang lain
+                        atau belum?" */}
+                    {isOwner && (
+                      <p className="text-[11px] text-neutral-500 mt-1.5">
+                        {STATUS_HINTS[incident.status]}
+                      </p>
+                    )}
+
+                    {isOwner && incident.adminNote && (
+                      <p className="text-[11px] text-neutral-700 bg-neutral-100 border border-neutral-200 rounded-lg px-3 py-2 mt-1.5">
+                        <strong>Admin note:</strong> {incident.adminNote}
+                      </p>
                     )}
                   </div>
 

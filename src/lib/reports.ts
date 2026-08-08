@@ -25,6 +25,10 @@ export interface IncidentItem {
   evidenceUrl: string | null;
   /** Semua lampiran. Kosong pada laporan yang dibuat sebelum fitur ini ada. */
   evidenceUrls?: string[];
+  /** Keadaan peninjauan. Hanya VERIFIED yang boleh tampil di daftar publik. */
+  status: ReportStatus;
+  /** Tanggapan admin yang terlihat oleh pelapor. */
+  adminNote?: string | null;
 }
 
 /**
@@ -70,18 +74,34 @@ export const CATEGORY_ICONS: Record<string, LucideIcon> = Object.fromEntries(
  */
 export const CATEGORY_STYLE = 'bg-neutral-100 text-neutral-700 border border-neutral-200';
 
-export type ReportStatus = 'pending' | 'reviewing' | 'resolved';
+/**
+ * Nilainya sama persis dengan enum ReportStatus di basis data.
+ *
+ * Sebelumnya di sini ada rangkaian status karangan ('reviewing', 'resolved')
+ * yang tidak pernah ada di basis data, dan setiap laporan ditampilkan sebagai
+ * 'pending' tanpa memandang keadaan sebenarnya - termasuk laporan yang sudah
+ * diverifikasi admin.
+ */
+export type ReportStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
 
 export const STATUS_LABELS: Record<ReportStatus, string> = {
-  pending: 'Pending Review',
-  reviewing: 'On Review',
-  resolved: 'Resolved',
+  PENDING: 'Waiting for review',
+  VERIFIED: 'Published',
+  REJECTED: 'Not published',
 };
 
 export const STATUS_STYLES: Record<ReportStatus, string> = {
-  pending: 'border border-amber-300 bg-amber-50 text-amber-700',
-  reviewing: 'border border-blue-300 bg-blue-50 text-blue-700',
-  resolved: 'border border-emerald-300 bg-emerald-50 text-emerald-700',
+  PENDING: 'border border-amber-300 bg-amber-50 text-amber-700',
+  VERIFIED: 'border border-emerald-300 bg-emerald-50 text-emerald-700',
+  REJECTED: 'border border-neutral-300 bg-neutral-100 text-neutral-600',
+};
+
+/** Penjelasan status untuk pelapor, bukan untuk admin. */
+export const STATUS_HINTS: Record<ReportStatus, string> = {
+  PENDING:
+    'Only you can see this. It appears in All Reports once an admin verifies it.',
+  VERIFIED: 'Visible to everyone in All Reports.',
+  REJECTED: 'An admin reviewed this and it will not be published.',
 };
 
 export function categoryLabel(value: string): string {

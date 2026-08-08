@@ -16,7 +16,14 @@ import {
   X,
 } from 'lucide-react';
 import DateTimePicker from '@/components/DateTimePicker';
-import { CATEGORIES, categoryLabel, formatTimestamp, referenceCode } from '@/lib/reports';
+import {
+  CATEGORIES,
+  categoryLabel,
+  formatTimestamp,
+  referenceCode,
+  STATUS_LABELS,
+  STATUS_STYLES,
+} from '@/lib/reports';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'video/mp4'];
@@ -79,8 +86,8 @@ function SubmittedSummaryCard({
         <div className="flex items-center justify-between gap-3">
           <dt className="text-gray-500">Status</dt>
           <dd>
-            <span className="px-2 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-[10px] font-semibold">
-              Pending Review
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_STYLES.PENDING}`}>
+              {STATUS_LABELS.PENDING}
             </span>
           </dd>
         </div>
@@ -371,8 +378,15 @@ export default function NewReportPage() {
             <h3 className="text-xl font-bold text-gray-900 mb-1 text-center">
               Report Submitted!
             </h3>
-            <p className="text-xs text-gray-500 italic mb-5 text-center">
+            <p className="text-xs text-gray-500 italic mb-2 text-center">
               Your incident report has been anonymized and registered.
+            </p>
+            {/* Ekspektasi disetel di sini, bukan dibiarkan pelapor menebak.
+                Tanpa kalimat ini, pelapor membuka daftar laporan, tidak
+                menemukan miliknya, dan mengira pengirimannya gagal. */}
+            <p className="text-[11px] text-gray-600 mb-5 text-center leading-snug max-w-xs">
+              An admin will review it before it appears in All Reports. Until
+              then you can follow it under <strong>My Reports</strong>.
             </p>
 
             <SubmittedSummaryCard
